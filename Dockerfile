@@ -29,14 +29,11 @@ ENV NODE_ENV=production
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# node_modules (with workspace symlinks + generated Prisma client) + built artifacts.
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
-COPY --from=builder /app/apps/web/dist ./apps/web/dist
+# Copy the whole built tree: this includes node_modules at every level
+# (root + nested workspace deps like better-auth in apps/api/node_modules),
+# the generated Prisma client, and all dist output. Robust against npm's
+# hoisting decisions. (Image size trimmed in the M6 hardening pass.)
+COPY --from=builder /app ./
 
 EXPOSE 3001
 # Apply pending migrations (non-destructive), then start the API.
