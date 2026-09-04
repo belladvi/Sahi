@@ -10,6 +10,7 @@ import { protectedRouter } from './routes/protected.js';
 import { applicationsRouter } from './routes/applications.js';
 import { accountRouter } from './routes/account.js';
 import { paymentsRouter } from './routes/payments.js';
+import { storageRouter } from './routes/storage.js';
 
 export function createApp(): Express {
   const app = express();
@@ -30,6 +31,8 @@ export function createApp(): Express {
   // The payment webhook needs the raw body for HMAC signature verification, so
   // capture it as a Buffer BEFORE express.json() (which would consume the stream).
   app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
+  // Signed object uploads (stub storage) carry raw file bytes — same treatment.
+  app.use('/api/storage/object', express.raw({ type: '*/*', limit: '15mb' }));
 
   app.use(express.json());
 
@@ -39,6 +42,7 @@ export function createApp(): Express {
   app.use('/api', applicationsRouter);
   app.use('/api', accountRouter);
   app.use('/api', paymentsRouter);
+  app.use('/api', storageRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {

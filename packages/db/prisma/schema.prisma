@@ -65,6 +65,17 @@ model Payment {
   updatedAt     DateTime    @updatedAt
 }
 
+// --- Object storage (M3 ticket 13: stub backend for signed-URL uploads) ---
+// In prod-with-keys this table is unused (files live in S3/R2); the stub stores
+// bytes here so signed upload/download works end-to-end without a cloud bucket.
+model StoredObject {
+  key         String   @id // e.g. applications/<appId>/aadhaar/<uuid>
+  contentType String
+  data        Bytes
+  size        Int
+  createdAt   DateTime @default(now())
+}
+
 // --- Better Auth (ticket 03) ---
 
 model User {
