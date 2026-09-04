@@ -6,6 +6,7 @@ import { Checklist } from './routes/Checklist';
 import { CreateAccount } from './routes/CreateAccount';
 import { SignIn } from './routes/SignIn';
 import { Pay } from './routes/Pay';
+import { Upload } from './routes/Upload';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { RequireRole } from './components/RequireRole';
@@ -18,9 +19,10 @@ export const router = createBrowserRouter([
   { path: '/sign-in', element: <SignIn /> },
   { path: '/create-account', element: <CreateAccount /> },
   { path: '/pay', element: <Pay /> },
+  { path: '/upload', element: <Upload /> },
   {
-    path: '/upload',
-    element: <Placeholder title="Upload documents" note="Document upload + preflight (Screen 6) lands in ticket 14." />,
+    path: '/confirm',
+    element: <Placeholder title="Confirm your details" note="Form-A confirm (Screen 8) lands in ticket 15." />,
   },
   {
     path: '/dashboard',

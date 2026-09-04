@@ -9,7 +9,8 @@ vi.mock('../auth.js', () => ({ auth: { api: { getSession } } }));
 
 const findUnique = vi.fn();
 const update = vi.fn();
-vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update } } }));
+const findFirst = vi.fn();
+vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst } } }));
 
 const { applicationsRouter } = await import('./applications.js');
 
@@ -96,5 +97,42 @@ describe('POST /api/applications/current/claim', () => {
       .set('x-draft-token', 't1');
     expect(res.status).toBe(409);
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/applications/current/documents', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+    update.mockReset();
+  });
+
+  it('saves masked Aadhaar + doc keys for the baker', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1' });
+    update.mockResolvedValue({});
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .send({ photoKey: 'applications/app1/photo/p', aadhaarMasked: 'XXXX XXXX 1234', applicantName: 'Riya' });
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ aadhaarMasked: 'XXXX XXXX 1234' }) }),
+    );
+  });
+
+  it('REJECTS a full (unmasked) Aadhaar number — 400, nothing stored', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .send({ aadhaarMasked: '1234 5678 9012' });
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('401 when signed out', async () => {
+    getSession.mockResolvedValue(null);
+    const res = await request(makeApp()).post('/api/applications/current/documents').send({ applicantName: 'x' });
+    expect(res.status).toBe(401);
   });
 });

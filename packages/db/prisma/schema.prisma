@@ -42,6 +42,16 @@ model Application {
   category       String?
   subCategory    String?
 
+  // documents (screen 7, ticket 14). Photo + address proof live in object
+  // storage (keys only). Aadhaar is MINIMIZED: OCR'd client-side, only the
+  // MASKED number + extracted name/address are stored — the raw Aadhaar image
+  // is never uploaded or persisted server-side.
+  photoKey           String?
+  addressProofKey    String?
+  aadhaarMasked      String? // e.g. "XXXX XXXX 1234" — never a full 12-digit number
+  applicantName      String?
+  residentialAddress String?
+
   formA     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -28,6 +28,9 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Keep heavy on-demand chunks (heic2any ~1.3MB) out of the precache —
+        // they're lazy-loaded only when a baker actually converts a HEIC file.
+        maximumFileSizeToCacheInBytes: 600 * 1024,
       },
       devOptions: { enabled: false },
     }),

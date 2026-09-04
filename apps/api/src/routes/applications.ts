@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { draftUpdateSchema, type DraftApplication, type Premises, type TurnoverBand } from '@sahi/shared';
+import { draftUpdateSchema, documentsSchema, type DraftApplication, type Premises, type TurnoverBand } from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -129,6 +129,37 @@ applicationsRouter.post('/applications/current/claim', requireAuth(), async (req
       data: { bakerId: userId },
     });
     res.json(toDraft(updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Save uploaded-document references + client-OCR'd fields for the baker's
+// application (screen 7). The schema REJECTS a full Aadhaar number, so only a
+// masked value can ever be persisted — the raw Aadhaar image is never uploaded.
+applicationsRouter.post('/applications/current/documents', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const parsed = documentsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const application = await prisma.application.findFirst({
+      where: { bakerId: userId },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!application) {
+      res.status(404).json({ error: 'No application' });
+      return;
+    }
+    await prisma.application.update({ where: { id: application.id }, data: parsed.data });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
