@@ -110,6 +110,17 @@ export const draftUpdateSchema = z.object({
 });
 export type DraftUpdate = z.infer<typeof draftUpdateSchema>;
 
+// --- account lookup (sign-in) ---------------------------------------------
+/** Used by sign-in to check whether a contact already has an account before
+ * sending an OTP (an unknown contact is nudged to the funnel instead of being
+ * silently signed up). `contact` is the already-normalised phone (+91…) or a
+ * trimmed email — exactly the value the OTP will be sent to. */
+export const accountLookupSchema = z.object({
+  method: z.enum(['phone', 'email']),
+  contact: z.string().trim().min(1).max(254),
+});
+export type AccountLookup = z.infer<typeof accountLookupSchema>;
+
 /** What the baker is allowed to see (category mapping is intentionally excluded). */
 export interface DraftApplication {
   id: string;

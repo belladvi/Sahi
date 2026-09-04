@@ -4,13 +4,13 @@ import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { authClient } from '../lib/auth-client';
-import { claimDraft } from '../lib/draft';
+import { accountExists } from '../lib/account';
 import { normalizePhone } from '../lib/phone';
 
 type Method = 'phone' | 'email';
 type Phase = 'contact' | 'code';
 
-export function CreateAccount() {
+export function SignIn() {
   const navigate = useNavigate();
   const [method, setMethod] = useState<Method>('phone');
   const [phase, setPhase] = useState<Phase>('contact');
@@ -18,7 +18,9 @@ export function CreateAccount() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
+  const value = () => (method === 'phone' ? normalizePhone(contact) : contact.trim());
   const contactValid =
     method === 'phone'
       ? contact.replace(/\D/g, '').length >= 10
@@ -27,11 +29,18 @@ export function CreateAccount() {
   async function sendCode() {
     setBusy(true);
     setError(null);
+    setNotFound(false);
     try {
+      // Gate: don't send an OTP (and silently auto-create) to an unknown contact.
+      const exists = await accountExists({ method, contact: value() });
+      if (!exists) {
+        setNotFound(true);
+        return;
+      }
       const res =
         method === 'phone'
-          ? await authClient.phoneNumber.sendOtp({ phoneNumber: normalizePhone(contact) })
-          : await authClient.emailOtp.sendVerificationOtp({ email: contact.trim(), type: 'sign-in' });
+          ? await authClient.phoneNumber.sendOtp({ phoneNumber: value() })
+          : await authClient.emailOtp.sendVerificationOtp({ email: value(), type: 'sign-in' });
       if (res.error) {
         setError(res.error.message ?? 'Could not send the code. Please try again.');
         return;
@@ -51,15 +60,13 @@ export function CreateAccount() {
     try {
       const res =
         method === 'phone'
-          ? await authClient.phoneNumber.verify({ phoneNumber: normalizePhone(contact), code })
-          : await authClient.signIn.emailOtp({ email: contact.trim(), otp: code });
+          ? await authClient.phoneNumber.verify({ phoneNumber: value(), code })
+          : await authClient.signIn.emailOtp({ email: value(), otp: code });
       if (res.error) {
         setError(res.error.message ?? 'That code was wrong or expired. Send a new one.');
         return;
       }
-      // Session established — carry the anonymous draft over, then pay.
-      await claimDraft();
-      navigate('/pay');
+      navigate('/dashboard');
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -70,14 +77,15 @@ export function CreateAccount() {
   return (
     <AppShell>
       <AppHeader
-        title="Create your account"
-        onBack={() => (phase === 'code' ? setPhase('contact') : navigate('/checklist'))}
+        title="Welcome back"
+        onBack={() => (phase === 'code' ? setPhase('contact') : navigate('/'))}
       />
       <div className="flex flex-1 flex-col gap-5 p-6">
         {phase === 'contact' ? (
           <>
             <p className="text-sm text-copy-muted">
-              Enter your mobile — we’ll send you a code. That’s your login, no password to remember.
+              Welcome back. Pop in your number and we’ll text you a code. No password needed — we’ll
+              verify this sign-in with a one-time code.
             </p>
 
             <div className="flex rounded-xl bg-app-raised p-1 ring-1 ring-line">
@@ -88,6 +96,7 @@ export function CreateAccount() {
                   onClick={() => {
                     setMethod(m);
                     setError(null);
+                    setNotFound(false);
                   }}
                   className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
                     method === m ? 'bg-action text-action-foreground' : 'text-copy-muted'
@@ -127,31 +136,34 @@ export function CreateAccount() {
               </label>
             )}
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {notFound && (
+              <div className="space-y-2 rounded-xl bg-app-raised p-4 ring-1 ring-line">
+                <p className="text-sm text-copy">We couldn’t find an account for that {method === 'phone' ? 'number' : 'email'}.</p>
+                <PrimaryAction type="button" variant="ghost" onClick={() => navigate('/eligibility')}>
+                  New here? Check eligibility
+                </PrimaryAction>
+              </div>
+            )}
 
-            <p className="text-xs text-copy-muted">You still haven’t paid anything.</p>
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             <div className="mt-auto space-y-3">
               <PrimaryAction type="button" disabled={busy || !contactValid} onClick={sendCode}>
-                {busy ? 'Sending…' : `Send code by ${method === 'phone' ? 'SMS' : 'email'}`}
+                {busy ? 'Checking…' : `Send code by ${method === 'phone' ? 'SMS' : 'email'}`}
               </PrimaryAction>
               <button
                 type="button"
-                onClick={() => navigate('/sign-in')}
+                onClick={() => navigate('/eligibility')}
                 className="w-full text-center text-sm text-copy-muted hover:text-copy"
               >
-                Already have an account? <span className="text-action">Sign in</span>
+                New here? <span className="text-action">Check eligibility</span>
               </button>
             </div>
           </>
         ) : (
           <>
             <p className="text-sm text-copy-muted">
-              We sent a 6-digit code to{' '}
-              <span className="text-copy">
-                {method === 'phone' ? normalizePhone(contact) : contact.trim()}
-              </span>
-              . Enter it below.
+              We sent a 6-digit code to <span className="text-copy">{value()}</span>. Enter it below.
             </p>
 
             <input
@@ -178,7 +190,7 @@ export function CreateAccount() {
 
             <div className="mt-auto">
               <PrimaryAction type="button" disabled={busy || code.length !== 6} onClick={verify}>
-                {busy ? 'Verifying…' : 'Verify & continue to payment'}
+                {busy ? 'Verifying…' : 'Verify & sign in'}
               </PrimaryAction>
             </div>
           </>

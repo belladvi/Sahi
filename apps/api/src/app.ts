@@ -8,6 +8,7 @@ import { healthRouter } from './routes/health.js';
 import { notesRouter } from './routes/notes.js';
 import { protectedRouter } from './routes/protected.js';
 import { applicationsRouter } from './routes/applications.js';
+import { accountRouter } from './routes/account.js';
 
 export function createApp(): Express {
   const app = express();
@@ -31,6 +32,7 @@ export function createApp(): Express {
   app.use('/api', notesRouter);
   app.use('/api', protectedRouter);
   app.use('/api', applicationsRouter);
+  app.use('/api', accountRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {
