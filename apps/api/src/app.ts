@@ -6,6 +6,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import { healthRouter } from './routes/health.js';
 import { notesRouter } from './routes/notes.js';
+import { protectedRouter } from './routes/protected.js';
 
 export function createApp(): Express {
   const app = express();
@@ -27,6 +28,7 @@ export function createApp(): Express {
 
   app.use('/api', healthRouter);
   app.use('/api', notesRouter);
+  app.use('/api', protectedRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {

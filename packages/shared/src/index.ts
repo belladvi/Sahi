@@ -32,4 +32,12 @@ export const noteSchema = z.object({
 
 export type Note = z.infer<typeof noteSchema>;
 
+// --- Roles / RBAC (ticket 05) ---
+
+export const roleSchema = z.enum(['baker', 'ops', 'admin']);
+export type Role = z.infer<typeof roleSchema>;
+
+/** Staff = ops or admin. */
+export const STAFF_ROLES: readonly Role[] = ['ops', 'admin'];
+
 export const APP_NAME = 'Sahi';
