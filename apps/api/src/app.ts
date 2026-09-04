@@ -9,6 +9,7 @@ import { notesRouter } from './routes/notes.js';
 import { protectedRouter } from './routes/protected.js';
 import { applicationsRouter } from './routes/applications.js';
 import { accountRouter } from './routes/account.js';
+import { paymentsRouter } from './routes/payments.js';
 
 export function createApp(): Express {
   const app = express();
@@ -26,6 +27,10 @@ export function createApp(): Express {
     next();
   });
 
+  // The payment webhook needs the raw body for HMAC signature verification, so
+  // capture it as a Buffer BEFORE express.json() (which would consume the stream).
+  app.use('/api/payments/webhook', express.raw({ type: '*/*' }));
+
   app.use(express.json());
 
   app.use('/api', healthRouter);
@@ -33,6 +38,7 @@ export function createApp(): Express {
   app.use('/api', protectedRouter);
   app.use('/api', applicationsRouter);
   app.use('/api', accountRouter);
+  app.use('/api', paymentsRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {

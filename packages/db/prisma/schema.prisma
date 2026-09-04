@@ -45,6 +45,24 @@ model Application {
   formA     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  payments Payment[]
+}
+
+// --- Payment (M2 ticket 12: ₹599 checkout) ---
+
+model Payment {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  orderId       String      @unique // gateway order id (Razorpay order_…)
+  paymentId     String? // gateway payment id (set on capture)
+  amount        Int // in paise (₹599 = 59900)
+  currency      String      @default("INR")
+  status        String      @default("created") // created|paid|failed
+  eventId       String?     @unique // gateway webhook event id (idempotency guard)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 // --- Better Auth (ticket 03) ---

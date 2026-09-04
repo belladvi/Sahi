@@ -5,6 +5,7 @@ import { Describe } from './routes/Describe';
 import { Checklist } from './routes/Checklist';
 import { CreateAccount } from './routes/CreateAccount';
 import { SignIn } from './routes/SignIn';
+import { Pay } from './routes/Pay';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { RequireRole } from './components/RequireRole';
@@ -16,9 +17,10 @@ export const router = createBrowserRouter([
   { path: '/checklist', element: <Checklist /> },
   { path: '/sign-in', element: <SignIn /> },
   { path: '/create-account', element: <CreateAccount /> },
+  { path: '/pay', element: <Pay /> },
   {
-    path: '/pay',
-    element: <Placeholder title="Payment" note="₹599 payment (Razorpay) lands in ticket 12." />,
+    path: '/upload',
+    element: <Placeholder title="Upload documents" note="Document upload + preflight (Screen 6) lands in ticket 14." />,
   },
   {
     path: '/dashboard',
