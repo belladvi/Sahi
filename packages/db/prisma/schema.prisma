@@ -20,6 +20,33 @@ model Note {
   createdAt DateTime @default(now())
 }
 
+// --- Application draft (M1: free front door) ---
+
+model Application {
+  id             String   @id @default(cuid())
+  draftToken     String   @unique
+  bakerId        String? // linked after account creation (M2)
+  status         String   @default("draft") // draft|paid|preparing|filed|gov_query|approved
+
+  // eligibility (screen 2)
+  products     String[] @default([])
+  premises     String? // own|rent
+  turnoverBand String? // basic|above
+
+  // describe (screen 3)
+  businessName String?
+  description  String?
+
+  // category-translation engine output (hidden from the baker)
+  kindOfBusiness String?
+  category       String?
+  subCategory    String?
+
+  formA     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // --- Better Auth (ticket 03) ---
 
 model User {
