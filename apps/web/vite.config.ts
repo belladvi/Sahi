@@ -28,9 +28,11 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // Keep heavy on-demand chunks (heic2any ~1.3MB) out of the precache —
-        // they're lazy-loaded only when a baker actually converts a HEIC file.
-        maximumFileSizeToCacheInBytes: 600 * 1024,
+        // Exclude the heavy on-demand chunk (heic2any ~1.3MB) from the precache —
+        // it's lazy-loaded only when a baker actually converts a HEIC file.
+        // (Must be globIgnores, not maximumFileSizeToCacheInBytes: the plugin
+        // FAILS THE BUILD on any asset over that limit rather than skipping it.)
+        globIgnores: ['**/heic2any-*.js'],
       },
       devOptions: { enabled: false },
     }),
