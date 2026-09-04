@@ -1,5 +1,6 @@
-// Prisma schema for Sahi. Ticket 02: connectivity + a trivial model.
-// The real domain model (build-spec §4) lands in later tickets.
+// Prisma schema for Sahi.
+// Ticket 02: connectivity (Note). Ticket 03: Better Auth tables (User/Session/Account/Verification).
+// The rest of the domain model (build-spec §4) lands in later tickets.
 
 generator client {
   provider      = "prisma-client-js"
@@ -12,9 +13,72 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-/// Trivial record used to prove the DB round-trip end to end.
+/// Trivial record used to prove the DB round-trip end to end (ticket 02).
 model Note {
   id        String   @id @default(cuid())
   text      String
   createdAt DateTime @default(now())
+}
+
+// --- Better Auth (ticket 03) ---
+
+model User {
+  id                  String    @id @default(cuid())
+  name                String?
+  email               String?   @unique
+  emailVerified       Boolean   @default(false)
+  image               String?
+  phoneNumber         String?   @unique
+  phoneNumberVerified Boolean   @default(false)
+  role                String    @default("baker")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  sessions            Session[]
+  accounts            Account[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
 }

@@ -2,6 +2,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import { toNodeHandler } from 'better-auth/node';
+import { auth } from './auth.js';
 import { healthRouter } from './routes/health.js';
 import { notesRouter } from './routes/notes.js';
 
@@ -9,6 +11,18 @@ export function createApp(): Express {
   const app = express();
 
   app.use(cors({ origin: process.env.CORS_ORIGIN ?? true, credentials: true }));
+
+  // Better Auth handler must run BEFORE express.json() (it reads the raw body).
+  // Path-guard middleware avoids Express 5 wildcard-route syntax pitfalls.
+  const authHandler = toNodeHandler(auth);
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/auth/')) {
+      void authHandler(req, res);
+      return;
+    }
+    next();
+  });
+
   app.use(express.json());
 
   app.use('/api', healthRouter);
