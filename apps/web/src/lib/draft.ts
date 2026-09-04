@@ -52,3 +52,19 @@ export async function updateDraft(update: DraftUpdate): Promise<DraftApplication
   });
   return (await res.json()) as DraftApplication;
 }
+
+/**
+ * Attach the anonymous draft to the just-created baker account (server sets
+ * `bakerId` from the session). Requires an authenticated session cookie.
+ * No-ops if there's no local draft. Returns true on success/idempotent claim.
+ */
+export async function claimDraft(): Promise<boolean> {
+  const token = getDraftToken();
+  if (!token) return false;
+  const res = await fetch(`${API}/api/applications/current/claim`, {
+    method: 'POST',
+    headers: { 'x-draft-token': token },
+    credentials: 'include',
+  });
+  return res.ok;
+}

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { draftUpdateSchema, type DraftApplication, type Premises, type TurnoverBand } from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
+import { requireAuth } from '../middleware/auth.js';
 
 export const applicationsRouter: Router = Router();
 
@@ -93,6 +94,40 @@ applicationsRouter.patch('/applications/current', async (req, res, next) => {
     }
 
     const updated = await prisma.application.update({ where: { draftToken: token }, data });
+    res.json(toDraft(updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Attach the anonymous draft to the signed-in baker (called right after
+// account creation at the pay-commit moment). Idempotent; won't steal a draft
+// already linked to a different account.
+applicationsRouter.post('/applications/current/claim', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const token = req.header(DRAFT_HEADER);
+    if (!token) {
+      res.status(400).json({ error: 'Missing draft token' });
+      return;
+    }
+    const existing = await prisma.application.findUnique({ where: { draftToken: token } });
+    if (!existing) {
+      res.status(404).json({ error: 'No draft' });
+      return;
+    }
+    if (existing.bakerId && existing.bakerId !== userId) {
+      res.status(409).json({ error: 'Draft already linked to another account' });
+      return;
+    }
+    const updated = await prisma.application.update({
+      where: { draftToken: token },
+      data: { bakerId: userId },
+    });
     res.json(toDraft(updated));
   } catch (err) {
     next(err);
