@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { APP_NAME, createNoteSchema, type Note } from '@sahi/shared';
+import { AppShell } from '../components/AppShell';
+import { AppHeader } from '../components/AppHeader';
+import { BottomNav } from '../components/BottomNav';
+import { Surface } from '../components/ui/Surface';
+import { PrimaryAction } from '../components/ui/PrimaryAction';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -24,7 +29,6 @@ export function Home() {
 
   async function addNote(e: FormEvent) {
     e.preventDefault();
-    // Validate with the SAME schema the server uses.
     const parsed = createNoteSchema.safeParse({ text });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Invalid note');
@@ -48,41 +52,55 @@ export function Home() {
   }
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem', maxWidth: 640 }}>
-      <h1>{APP_NAME}</h1>
-      <p>FSSAI registration for Bangalore home bakers — walking skeleton.</p>
-
-      <section
-        style={{ marginTop: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: 8 }}
-      >
-        <h2 style={{ fontSize: '1rem', marginTop: 0 }}>Database connectivity demo (temporary)</h2>
-        <p style={{ color: '#666', fontSize: '0.85rem' }}>
-          Proves web → API → Neon Postgres round-trips using one shared Zod schema. This block is
-          replaced by the real screens starting at ticket 06.
-        </p>
-        <form onSubmit={addNote} style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type a note…"
-            aria-label="Note text"
-            style={{ flex: 1, padding: 8 }}
-          />
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Add'}
-          </button>
-        </form>
-        {error && (
-          <p role="alert" style={{ color: '#c00', fontSize: '0.85rem' }}>
-            {error}
+    <AppShell>
+      <AppHeader title={APP_NAME} />
+      <div className="flex-1 space-y-5 overflow-y-auto p-5">
+        <section className="space-y-1">
+          <h2 className="text-2xl font-bold leading-tight">
+            Your FSSAI licence, <span className="text-action">done for you</span>.
+          </h2>
+          <p className="text-sm text-copy-muted">
+            From “do I even need one?” to a real registration — for Bangalore home bakers.
           </p>
-        )}
-        <ul data-testid="notes">
-          {notes.map((n) => (
-            <li key={n.id}>{n.text}</li>
-          ))}
-        </ul>
-      </section>
-    </main>
+        </section>
+
+        <Surface>
+          <h3 className="text-sm font-semibold">Design-system + DB demo (temporary)</h3>
+          <p className="mt-1 text-xs text-copy-muted">
+            The dark-navy + yellow kit and a live web → API → Neon round-trip. Real screens land
+            from ticket 06.
+          </p>
+          <form onSubmit={addNote} className="mt-3 flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Type a note…"
+              aria-label="Note text"
+              className="flex-1 rounded-xl bg-app px-3 py-2 text-sm text-copy ring-1 ring-line outline-none placeholder:text-copy-muted"
+            />
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-xl bg-action px-4 py-2 text-sm font-semibold text-action-foreground disabled:opacity-50"
+            >
+              {saving ? '…' : 'Add'}
+            </button>
+          </form>
+          {error && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {error}
+            </p>
+          )}
+          <ul data-testid="notes" className="mt-3 space-y-1 text-sm text-copy-muted">
+            {notes.map((n) => (
+              <li key={n.id}>• {n.text}</li>
+            ))}
+          </ul>
+        </Surface>
+
+        <PrimaryAction type="button">Check if I need a licence</PrimaryAction>
+      </div>
+      <BottomNav active="home" />
+    </AppShell>
   );
 }
