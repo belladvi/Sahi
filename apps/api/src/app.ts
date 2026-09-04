@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import express, { type Express } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { healthRouter } from './routes/health.js';
+import { notesRouter } from './routes/notes.js';
 
 export function createApp(): Express {
   const app = express();
@@ -11,6 +12,7 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.use('/api', healthRouter);
+  app.use('/api', notesRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {
@@ -29,6 +31,12 @@ export function createApp(): Express {
       res.sendFile(path.join(webDist, 'index.html'));
     });
   }
+
+  // JSON error handler (last).
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('[api] unhandled error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  });
 
   return app;
 }

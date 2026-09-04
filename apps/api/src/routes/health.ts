@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import { healthResponseSchema, type HealthResponse } from '@sahi/shared';
+import { prisma } from '@sahi/db';
 
 export const healthRouter: Router = Router();
 
-healthRouter.get('/health', (_req, res) => {
+healthRouter.get('/health', async (_req, res) => {
+  let db: HealthResponse['db'] = 'down';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    db = 'up';
+  } catch {
+    db = 'down';
+  }
+
   const body: HealthResponse = {
     status: 'ok',
     service: 'sahi-api',
     timestamp: new Date().toISOString(),
+    db,
   };
-  // Validate our own contract before responding (ticket 02+ extends this
-  // to check DB / object storage, per build-spec §6).
   res.json(healthResponseSchema.parse(body));
 });

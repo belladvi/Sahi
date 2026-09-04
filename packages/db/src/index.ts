@@ -1,6 +1,15 @@
+import { PrismaClient } from '@prisma/client';
+
 /**
- * Placeholder for the database layer.
- * Ticket 02 (Prisma + Neon) replaces this with the generated Prisma client
- * and schema. Kept as a workspace now so the monorepo graph is complete.
+ * Single shared Prisma client for the API.
+ * Reuse across hot-reloads in dev to avoid exhausting connections.
  */
-export const DB_PLACEHOLDER = true as const;
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+export const prisma: PrismaClient = globalForPrisma.prisma ?? new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
+export * from '@prisma/client';
