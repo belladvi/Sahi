@@ -48,6 +48,8 @@ describe('Buyer-verify (public)', () => {
     expect(res.body.fssaiNumber).toBe('12345678901234');
     expect(res.body.status).toBe('Active');
     expect(res.body.waLink).toContain('wa.me/919876543210');
+    // Order intent references the verified page (ticket 23).
+    expect(decodeURIComponent(res.body.waLink)).toContain('/verify/tok');
   });
 
   it('HTML: approved → server-rendered page with OG meta + details', async () => {

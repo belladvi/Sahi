@@ -18,10 +18,13 @@ async function lookup(token: string): Promise<VerifyData | null> {
   if (!app || app.status !== 'approved' || !app.fssaiNumber) return null;
   const saved = (app.formA as { phone?: string } | null) ?? null;
   const phoneDigits = (saved?.phone ?? '').replace(/\D/g, '');
+  // Prefilled order intent that references the verified page (ticket 23), so the
+  // baker sees the buyer arrived via their government-verified Sahi page.
+  const base = process.env.APP_BASE_URL ?? '';
+  const verifyPageUrl = `${base}/verify/${token}`;
+  const orderText = `Hi ${app.businessName ?? 'there'}! I found your verified FSSAI page on Sahi (${verifyPageUrl}) and I'd like to place an order.`;
   const waLink = phoneDigits
-    ? `https://wa.me/${phoneDigits.length === 10 ? '91' + phoneDigits : phoneDigits}?text=${encodeURIComponent(
-        `Hi ${app.businessName ?? ''}! I'd like to place an order.`,
-      )}`
+    ? `https://wa.me/${phoneDigits.length === 10 ? '91' + phoneDigits : phoneDigits}?text=${encodeURIComponent(orderText)}`
     : null;
   return {
     businessName: app.businessName ?? 'This business',
