@@ -4,11 +4,16 @@ import type { FilingStatusView } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { getFilingStatus } from '../lib/filing';
+import { getMyNotification } from '../lib/notifications';
 
 export function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<FilingStatusView | null>(null);
+  // Screen 19 entry link — shown only when a demo notification actually exists
+  // (endpoint 200). It 404s both before approval and while the feature is off,
+  // so this stays hidden in exactly those cases.
+  const [hasNotification, setHasNotification] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -25,6 +30,9 @@ export function Dashboard() {
         return;
       }
       setView(v);
+      const notif = await getMyNotification();
+      if (!alive) return;
+      setHasNotification(notif.kind === 'ok');
       setLoading(false);
     })();
     return () => {
@@ -86,6 +94,22 @@ export function Dashboard() {
             </span>
             <span className="shrink-0 text-copy-muted">↓</span>
           </a>
+        )}
+
+        {/* Screen 19 — demo notification preview (only when one exists) */}
+        {hasNotification && (
+          <button
+            type="button"
+            onClick={() => navigate('/notification')}
+            className="flex items-center gap-4 rounded-2xl bg-app-raised p-4 text-left ring-1 ring-line hover:bg-app"
+          >
+            <span className="grid size-12 place-items-center rounded-full bg-verified/15 text-lg">💬</span>
+            <span className="min-w-0 flex-1">
+              <strong className="block text-base text-copy">View message preview</strong>
+              <span className="mt-0.5 block text-sm text-copy-muted">Your licence-ready notification</span>
+            </span>
+            <span className="text-copy-muted">›</span>
+          </button>
         )}
 
         {/* Trust Score glance (full view = ticket 24) */}

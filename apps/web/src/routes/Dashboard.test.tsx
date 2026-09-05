@@ -7,6 +7,9 @@ vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 const getFilingStatus = vi.fn();
 vi.mock('../lib/filing', () => ({ getFilingStatus: () => getFilingStatus() }));
 
+const getMyNotification = vi.fn();
+vi.mock('../lib/notifications', () => ({ getMyNotification: () => getMyNotification() }));
+
 const { Dashboard } = await import('./Dashboard');
 
 const approved = {
@@ -23,6 +26,9 @@ describe('Dashboard', () => {
   beforeEach(() => {
     navigate.mockReset();
     getFilingStatus.mockReset();
+    getMyNotification.mockReset();
+    // Default: no notification (feature off or none yet) → link hidden.
+    getMyNotification.mockResolvedValue({ kind: 'missing' });
   });
   afterEach(() => cleanup());
 
@@ -39,5 +45,23 @@ describe('Dashboard', () => {
     getFilingStatus.mockResolvedValue({ ...approved, status: 'preparing', fssaiNumber: null, verifyToken: null, certificateUrl: null });
     render(<Dashboard />);
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/status'));
+  });
+
+  it('shows "View message preview" only when a demo notification exists', async () => {
+    getFilingStatus.mockResolvedValue(approved);
+    getMyNotification.mockResolvedValue({ kind: 'ok', view: { status: 'sent' } });
+    render(<Dashboard />);
+    const link = await screen.findByText('View message preview');
+    expect(link).toBeInTheDocument();
+    link.closest('button')!.click();
+    expect(navigate).toHaveBeenCalledWith('/notification');
+  });
+
+  it('hides "View message preview" when no notification exists (off / pre-approval)', async () => {
+    getFilingStatus.mockResolvedValue(approved);
+    getMyNotification.mockResolvedValue({ kind: 'missing' });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText(/You’re verified/i)).toBeInTheDocument());
+    expect(screen.queryByText('View message preview')).not.toBeInTheDocument();
   });
 });

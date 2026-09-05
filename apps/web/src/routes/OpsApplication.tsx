@@ -6,6 +6,7 @@ import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { getOpsApplication, transitionApplication, uploadCertificate, publishApplication } from '../lib/ops';
+import { getOpsNotification } from '../lib/notifications';
 
 const ACTION_LABEL: Record<string, string> = {
   filed: 'Mark filed to FoSCoS',
@@ -36,10 +37,16 @@ export function OpsApplication() {
   const [certKey, setCertKey] = useState<string | null>(null);
   const [certName, setCertName] = useState<string | null>(null);
   const [certBusy, setCertBusy] = useState(false);
+  // Screen 19 entry link — shown only when a demo notification exists (endpoint
+  // 200). It 404s before approval and while the feature is off, so this stays
+  // hidden in exactly those cases. Re-probed on load so it appears after publish.
+  const [hasNotification, setHasNotification] = useState(false);
 
   async function load() {
     const a = await getOpsApplication(id);
     setApp(a);
+    const notif = await getOpsNotification(id);
+    setHasNotification(notif.kind === 'ok');
     setLoading(false);
   }
   useEffect(() => {
@@ -173,6 +180,18 @@ export function OpsApplication() {
             <p className="text-sm font-semibold text-verified">Published · live</p>
             <p className="mt-1 text-sm text-copy">FSSAI {app.fssaiNumber}</p>
           </Surface>
+        )}
+
+        {/* Screen 19 — demo notification preview (only when one exists) */}
+        {hasNotification && (
+          <button
+            type="button"
+            onClick={() => navigate(`/ops/${id}/notification`)}
+            className="flex items-center justify-between rounded-xl bg-app-raised px-3 py-2.5 text-left ring-1 ring-line hover:bg-app"
+          >
+            <span className="text-sm font-semibold text-copy">💬 View notification</span>
+            <span className="text-copy-muted">›</span>
+          </button>
         )}
 
         {canApprove && (
