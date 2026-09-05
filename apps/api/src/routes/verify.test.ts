@@ -70,4 +70,12 @@ describe('Buyer-verify (public)', () => {
     expect(res.status).toBe(404);
     expect(res.text).toContain('couldn’t verify');
   });
+
+  it('HTML: inactive (not-approved) token → 404 not-found page, still server-rendered', async () => {
+    findUnique.mockResolvedValue({ ...approvedApp, status: 'filed', fssaiNumber: null });
+    const res = await request(makeApp()).get('/verify/tok');
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.text).toContain('couldn’t verify');
+  });
 });

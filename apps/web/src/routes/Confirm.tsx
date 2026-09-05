@@ -43,7 +43,10 @@ export function Confirm() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [hygiene, setHygiene] = useState(true);
+  // The hygiene declaration is a legal self-declaration: it starts UNCHECKED so
+  // filing requires a fresh, explicit affirmative tap every time this screen loads
+  // (we intentionally do not re-hydrate it from a prior submission).
+  const [hygiene, setHygiene] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,8 +66,6 @@ export function Confirm() {
       setAddress(view.residentialAddress ?? '');
       setPhone(view.phone ?? '');
       setEmail(view.email ?? '');
-      // Hygiene declaration defaults to checked (as the mockup), but she must
-      // keep it ticked to file — it's her legal self-declaration.
       setLoading(false);
     })();
     return () => {
@@ -76,6 +77,9 @@ export function Confirm() {
     name.trim() && business.trim() && address.trim() && phone.trim().length >= 8 && hygiene;
 
   async function file() {
+    // Client-side block: never file without a fresh affirmative tick. This also
+    // narrows `hygiene` to `true` for the typed payload below.
+    if (!hygiene) return;
     setBusy(true);
     setError(null);
     try {
@@ -85,7 +89,10 @@ export function Confirm() {
         residentialAddress: address.trim(),
         phone: phone.trim(),
         email: email.trim(),
-        hygieneAccepted: true,
+        // Send the baker's ACTUAL choice, not a hardcoded true — the server
+        // (z.literal(true)) is the real gate and records this as the audited
+        // confirmation; the client must never assert consent she didn't give.
+        hygieneAccepted: hygiene,
       });
       if (!res.ok) {
         setError(res.error ?? 'Could not file. Please try again.');

@@ -285,6 +285,16 @@ describe('POST /api/applications/current/form-a', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('400 when the hygiene declaration is missing entirely (no implied consent)', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/form-a')
+      .send({ applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210' });
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('files Form-A and moves status to preparing (Ops files it to the government)', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     findFirst.mockResolvedValue({ id: 'app1' });
@@ -297,6 +307,14 @@ describe('POST /api/applications/current/form-a', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'preparing' }) }),
     );
+    // Auditable confirmation event: the accepted declaration + a timestamp are
+    // persisted with the filing (who = the application's baker; what/when here).
+    const persistedFormA = update.mock.calls[0]![0].data.formA as {
+      hygieneAccepted: boolean;
+      submittedAt: string;
+    };
+    expect(persistedFormA.hygieneAccepted).toBe(true);
+    expect(typeof persistedFormA.submittedAt).toBe('string');
   });
 });
 

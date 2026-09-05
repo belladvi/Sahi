@@ -27,6 +27,12 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
+        // The SPA fallback must NOT swallow server-owned routes. /verify/:token is
+        // a public, no-login, Express-rendered trust page; without this denylist a
+        // service-worker-controlled browser (installed PWA, or any repeat visit)
+        // serves index.html for it and the buyer sees the React app's generic
+        // 404 instead of the real verify page. /api/* is server-owned too.
+        navigateFallbackDenylist: [/^\/verify\//, /^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // Exclude the heavy on-demand chunk (heic2any ~1.3MB) from the precache —
         // it's lazy-loaded only when a baker actually converts a HEIC file.
