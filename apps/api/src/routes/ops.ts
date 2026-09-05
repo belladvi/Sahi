@@ -11,6 +11,8 @@ import {
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { getStorage, purgeRawIdDocs } from '../lib/storage.js';
+import { redact } from '../lib/notifications.js';
+import { enqueueLicenceReadyTx, deliverLicenceReady } from '../lib/notification-workflow.js';
 import { requireRole } from '../middleware/auth.js';
 
 export const opsRouter: Router = Router();
@@ -187,13 +189,20 @@ opsRouter.post('/ops/applications/:id/publish', requireRole('ops', 'admin'), asy
       await tx.filingEvent.create({
         data: { applicationId: id, fromStatus: app.status, toStatus: 'approved', note: `FSSAI ${fssaiNumber}`, actorId: req.user?.id ?? null },
       });
+      // Ticket 26A: write the durable `queued` notification (outbox) row in the
+      // SAME transaction as approval — atomic, so there is no crash window where
+      // an application is approved with no notification record. No-op if the flag
+      // is off. Delivery happens later, off the request path (below).
+      await enqueueLicenceReadyTx(tx, id, fssaiNumber);
     });
     // Retention: drop any raw Aadhaar objects post-approval (no-op today — we
     // never persist raw Aadhaar, but this is the wired trigger from ticket 13).
     await purgeRawIdDocs(id);
-    // Notification is enqueued here; real WhatsApp delivery lands in ticket 26.
-    console.log(`[notify] enqueue live-number message for application ${id} (FSSAI ${fssaiNumber})`);
     console.log(`[audit] ops ${req.user?.id} PUBLISHED application ${id}: ${app.status} -> approved`);
+    // Fire-and-forget delivery — the approval response NEVER waits for storage
+    // checks or the notification provider. If the process crashes before/within
+    // delivery, the durable queued row above is recovered by the reconciler.
+    void deliverLicenceReady(id).catch((err) => console.error(`[notify] delivery failed (non-fatal) app=${id}: ${redact(err)}`));
     res.json({ ok: true, status: 'approved', verifyToken });
   } catch (err) {
     next(err);

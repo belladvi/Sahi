@@ -65,8 +65,34 @@ model Application {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  payments Payment[]
-  events   FilingEvent[]
+  payments      Payment[]
+  events        FilingEvent[]
+  notifications Notification[]
+}
+
+/// Licence-ready baker notification (ticket 26A — DEMO). Provider-neutral; the
+/// demo uses MockWhatsAppProvider (no real BSP — that is ticket 26B). A row is
+/// created AFTER the approval transaction has committed, never inside it, and
+/// its processing can never roll back or fail approval. Additive + reversible.
+model Notification {
+  id             String   @id @default(cuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  channel        String   @default("whatsapp")
+  kind           String   @default("licence_ready")
+  status         String   @default("queued") // queued|processing|sent|failed
+  idempotencyKey String   @unique // e.g. "licence-ready:<applicationId>" — dedupes repeat events + retries
+  attempts       Int      @default(0)
+  providerRef    String? // mock provider message reference, set on success
+  failureReason  String? // final failure reason (e.g. certificate_unavailable, provider_error)
+  fssaiNumber    String? // snapshot of the approved number included in the message
+  lockedAt       DateTime? // delivery-claim lease: set when a worker claims the row; a stale lease is reclaimable (crash recovery)
+  lastAttemptAt  DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([applicationId])
 }
 
 /// Audit log of application status transitions (ticket 17). One row per Ops

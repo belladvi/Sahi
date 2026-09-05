@@ -16,6 +16,7 @@ import { TrustScore } from './routes/TrustScore';
 import { Renewal } from './routes/Renewal';
 import { OpsHome } from './routes/OpsHome';
 import { OpsApplication } from './routes/OpsApplication';
+import { Notification } from './routes/Notification';
 import { RequireRole } from './components/RequireRole';
 
 export const router = createBrowserRouter([
@@ -34,6 +35,15 @@ export const router = createBrowserRouter([
   { path: '/qr', element: <Qr /> },
   { path: '/trust-score', element: <TrustScore /> },
   { path: '/renewal', element: <Renewal /> },
+  { path: '/notification', element: <Notification /> },
+  {
+    path: '/ops/:id/notification',
+    element: (
+      <RequireRole roles={['ops', 'admin']}>
+        <Notification />
+      </RequireRole>
+    ),
+  },
   {
     path: '/ops',
     element: (

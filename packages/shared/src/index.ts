@@ -378,3 +378,37 @@ export interface DraftApplication {
 }
 
 export const APP_NAME = 'Sahi';
+
+// --- Licence-ready notification (screen 19 / ticket 26A — DEMO) -------------
+/** Deterministic delivery states for the licence-ready notification.
+ * `processing` = a worker has claimed the row (lease) and is calling the provider. */
+export type NotificationStatus = 'queued' | 'processing' | 'sent' | 'failed';
+
+/** Max automatic delivery attempts before a notification is left `failed`
+ * (exhausted). Ops may still force one more explicit attempt past this. */
+export const MAX_NOTIFICATION_ATTEMPTS = 3;
+
+/** Screen 19 preview data. Always a DEMO in 26A — no real WhatsApp message is
+ * sent. Phone is masked and the certificate URL is a freshly-minted, short-lived
+ * signed link (never a permanent public URL). */
+export interface NotificationView {
+  status: NotificationStatus;
+  channel: string;
+  attempts: number;
+  maxAttempts: number;
+  providerRef: string | null;
+  failureReason: string | null;
+  fssaiNumber: string | null;
+  businessName: string | null;
+  phoneMasked: string | null;
+  certificateUrl: string | null;
+  sentAt: string | null;
+  lastAttemptAt: string | null;
+  /** Attempts have hit the automatic limit and it is still failed. */
+  exhausted: boolean;
+  /** Safe normal retry is available (failed and under the attempt limit). */
+  canRetry: boolean;
+  /** Ops-only explicit retry past the exhausted limit (records a new attempt). */
+  canForceRetry: boolean;
+  demo: true;
+}
