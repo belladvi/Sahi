@@ -136,3 +136,70 @@ describe('POST /api/applications/current/documents', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/applications/current/confirm', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+  });
+
+  it('401 when signed out', async () => {
+    getSession.mockResolvedValue(null);
+    const res = await request(makeApp()).get('/api/applications/current/confirm');
+    expect(res.status).toBe(401);
+  });
+
+  it('pre-fills phone/email from the account and hides the synthetic phone email', async () => {
+    getSession.mockResolvedValue({
+      user: { id: 'u1', role: 'baker', phoneNumber: '+919812345678', email: '+919812345678@phone.sahi.local' },
+    });
+    findFirst.mockResolvedValue({
+      ...row,
+      applicantName: 'Riya',
+      residentialAddress: null,
+      photoKey: null,
+      addressProofKey: null,
+      aadhaarMasked: null,
+      formA: null,
+    });
+    const res = await request(makeApp()).get('/api/applications/current/confirm');
+    expect(res.status).toBe(200);
+    expect(res.body.phone).toBe('+919812345678');
+    expect(res.body.email).toBeNull(); // synthetic phone email is not surfaced
+    expect(res.body.hygieneAccepted).toBe(false);
+    // Hidden category mapping never leaks.
+    expect(res.body).not.toHaveProperty('category');
+  });
+});
+
+describe('POST /api/applications/current/form-a', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+    update.mockReset();
+  });
+
+  it('400 when the hygiene declaration is not accepted', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/form-a')
+      .send({ applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210', hygieneAccepted: false });
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('files Form-A and flips status to filed', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1' });
+    update.mockResolvedValue({ status: 'filed' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/form-a')
+      .send({ applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210', hygieneAccepted: true });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, status: 'filed' });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'filed' }) }),
+    );
+  });
+});

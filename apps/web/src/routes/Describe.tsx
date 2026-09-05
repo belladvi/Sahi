@@ -71,8 +71,7 @@ export function Describe() {
         </label>
 
         <p className="text-xs text-copy-muted">
-          We’ll translate this into the exact government category for you — you don’t need to figure
-          it out.
+          We’ll handle the official paperwork for you — you’ll never have to pick a category.
         </p>
 
         <div className="mt-auto">

@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { draftUpdateSchema, documentsSchema, type DraftApplication, type Premises, type TurnoverBand } from '@sahi/shared';
+import {
+  draftUpdateSchema,
+  documentsSchema,
+  formASchema,
+  type ConfirmView,
+  type DraftApplication,
+  type Premises,
+  type TurnoverBand,
+} from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -160,6 +168,87 @@ applicationsRouter.post('/applications/current/documents', requireAuth(), async 
     }
     await prisma.application.update({ where: { id: application.id }, data: parsed.data });
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Phone-signup accounts get a synthetic email; don't surface it as a real one.
+function realEmail(email: string | null): string | null {
+  if (!email || email.endsWith('@phone.sahi.local')) return null;
+  return email;
+}
+
+// Confirm view (screen 8): pre-fill Form-A from documents + eligibility + the
+// signed-in account. The category mapping stays hidden.
+applicationsRouter.get('/applications/current/confirm', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const app = await prisma.application.findFirst({
+      where: { bakerId: userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!app) {
+      res.status(404).json({ error: 'No application' });
+      return;
+    }
+    const saved = (app.formA as { phone?: string; email?: string; hygieneAccepted?: boolean } | null) ?? null;
+    const view: ConfirmView = {
+      applicantName: app.applicantName,
+      businessName: app.businessName,
+      products: app.products,
+      residentialAddress: app.residentialAddress,
+      phone: saved?.phone ?? req.user?.phoneNumber ?? null,
+      email: saved?.email ?? realEmail(req.user?.email ?? null),
+      hygieneAccepted: saved?.hygieneAccepted ?? false,
+      status: app.status,
+    };
+    res.json(view);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// File Form-A (screen 8 → filing): persist the confirmed details + the hygiene
+// self-declaration, then flip the application to `filed`.
+applicationsRouter.post('/applications/current/form-a', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const parsed = formASchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const app = await prisma.application.findFirst({
+      where: { bakerId: userId },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!app) {
+      res.status(404).json({ error: 'No application' });
+      return;
+    }
+    const { applicantName, businessName, residentialAddress, phone, email, hygieneAccepted } = parsed.data;
+    const updated = await prisma.application.update({
+      where: { id: app.id },
+      data: {
+        applicantName,
+        businessName,
+        residentialAddress,
+        status: 'filed',
+        formA: { phone, email: email ?? '', hygieneAccepted, submittedAt: new Date().toISOString() },
+      },
+      select: { status: true },
+    });
+    res.json({ ok: true, status: updated.status });
   } catch (err) {
     next(err);
   }

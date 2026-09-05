@@ -6,6 +6,7 @@ import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { authClient } from '../lib/auth-client';
 import { claimDraft } from '../lib/draft';
 import { normalizePhone } from '../lib/phone';
+import { fetchDemoOtp } from '../lib/demo-otp';
 
 type Method = 'phone' | 'email';
 type Phase = 'contact' | 'code';
@@ -18,6 +19,7 @@ export function CreateAccount() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoNote, setDemoNote] = useState<string | null>(null);
 
   const contactValid =
     method === 'phone'
@@ -38,6 +40,12 @@ export function CreateAccount() {
       }
       setCode('');
       setPhase('code');
+      // Demo mode: no real SMS/email is wired yet, so auto-fill the code.
+      const demo = await fetchDemoOtp(method === 'phone' ? normalizePhone(contact) : contact.trim());
+      if (demo) {
+        setCode(demo);
+        setDemoNote(`Demo mode — code ${demo} auto-filled (real SMS/email isn’t wired yet).`);
+      }
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -164,6 +172,12 @@ export function CreateAccount() {
               aria-label="6-digit code"
               className="w-full rounded-xl bg-app-raised py-4 text-center text-2xl font-semibold tracking-[0.6em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
             />
+
+            {demoNote && (
+              <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
+                {demoNote}
+              </p>
+            )}
 
             {error && <p className="text-sm text-red-400">{error}</p>}
 

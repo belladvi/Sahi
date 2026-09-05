@@ -7,6 +7,7 @@ import { CreateAccount } from './routes/CreateAccount';
 import { SignIn } from './routes/SignIn';
 import { Pay } from './routes/Pay';
 import { Upload } from './routes/Upload';
+import { Confirm } from './routes/Confirm';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { RequireRole } from './components/RequireRole';
@@ -20,10 +21,7 @@ export const router = createBrowserRouter([
   { path: '/create-account', element: <CreateAccount /> },
   { path: '/pay', element: <Pay /> },
   { path: '/upload', element: <Upload /> },
-  {
-    path: '/confirm',
-    element: <Placeholder title="Confirm your details" note="Form-A confirm (Screen 8) lands in ticket 15." />,
-  },
+  { path: '/confirm', element: <Confirm /> },
   {
     path: '/dashboard',
     element: <Placeholder title="Your dashboard" note="The baker dashboard (Screen 9) lands in ticket 19." />,

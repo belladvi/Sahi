@@ -151,6 +151,35 @@ export const documentsSchema = z.object({
 });
 export type DocumentsInput = z.infer<typeof documentsSchema>;
 
+// --- Confirm details / Form-A (screen 8 / ticket 15) ----------------------
+/** The pre-filled confirm view: read from documents + account, the baker edits
+ * the manual fields and affirms the hygiene declaration before we file. */
+export interface ConfirmView {
+  applicantName: string | null;
+  businessName: string | null;
+  products: string[];
+  residentialAddress: string | null;
+  phone: string | null;
+  email: string | null;
+  hygieneAccepted: boolean;
+  status: string;
+}
+
+/** What the baker submits from the confirm screen. Hygiene MUST be ticked
+ * (it's her legal self-declaration) or we won't file. Email is optional —
+ * phone-signup accounts may not have a real one yet. */
+export const formASchema = z.object({
+  applicantName: z.string().trim().min(1, 'Add your name').max(120),
+  businessName: z.string().trim().min(1, 'Add your business name').max(120),
+  residentialAddress: z.string().trim().min(1, 'Add your address').max(300),
+  phone: z.string().trim().min(8, 'Add your phone number').max(20),
+  email: z.union([z.string().trim().email().max(254), z.literal('')]).optional(),
+  hygieneAccepted: z.literal(true, {
+    errorMap: () => ({ message: 'Please confirm the hygiene declaration' }),
+  }),
+});
+export type FormAInput = z.infer<typeof formASchema>;
+
 /** What the baker is allowed to see (category mapping is intentionally excluded). */
 export interface DraftApplication {
   id: string;
