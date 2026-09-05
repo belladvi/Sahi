@@ -53,6 +53,13 @@ model Application {
   residentialAddress String?
 
   formA     Json?
+
+  // approval (screen 9 live state; set by Ops in ticket 18)
+  fssaiNumber    String? // 14-digit FSSAI registration number, once approved
+  certificateKey String? // object-storage key for the certificate PDF
+  filedAt        DateTime? // when Form-A was filed (drives the status timeline)
+  approvedAt     DateTime? // when Ops published the number
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

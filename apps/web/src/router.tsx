@@ -8,6 +8,7 @@ import { SignIn } from './routes/SignIn';
 import { Pay } from './routes/Pay';
 import { Upload } from './routes/Upload';
 import { Confirm } from './routes/Confirm';
+import { FilingStatus } from './routes/FilingStatus';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { RequireRole } from './components/RequireRole';
@@ -22,6 +23,7 @@ export const router = createBrowserRouter([
   { path: '/pay', element: <Pay /> },
   { path: '/upload', element: <Upload /> },
   { path: '/confirm', element: <Confirm /> },
+  { path: '/status', element: <FilingStatus /> },
   {
     path: '/dashboard',
     element: <Placeholder title="Your dashboard" note="The baker dashboard (Screen 9) lands in ticket 19." />,

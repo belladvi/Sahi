@@ -6,11 +6,14 @@ import {
   formASchema,
   type ConfirmView,
   type DraftApplication,
+  type FilingStatus,
+  type FilingStatusView,
   type Premises,
   type TurnoverBand,
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
+import { getStorage } from '../lib/storage.js';
 import { requireAuth } from '../middleware/auth.js';
 
 export const applicationsRouter: Router = Router();
@@ -244,11 +247,48 @@ applicationsRouter.post('/applications/current/form-a', requireAuth(), async (re
         businessName,
         residentialAddress,
         status: 'filed',
+        filedAt: new Date(),
         formA: { phone, email: email ?? '', hygieneAccepted, submittedAt: new Date().toISOString() },
       },
       select: { status: true },
     });
     res.json({ ok: true, status: updated.status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Filing status (screen 9): the calm state machine. Government queries stay
+// hidden from the baker — `gov_query` is reported to her as still under review.
+applicationsRouter.get('/applications/current/filing', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const app = await prisma.application.findFirst({
+      where: { bakerId: userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!app) {
+      res.status(404).json({ error: 'No application' });
+      return;
+    }
+    // A certificate download only exists once approved and a key is set (ticket 18).
+    let certificateUrl: string | null = null;
+    if (app.status === 'approved' && app.certificateKey) {
+      certificateUrl = getStorage().signDownload(app.certificateKey).url;
+    }
+    const view: FilingStatusView = {
+      status: app.status as FilingStatus,
+      businessName: app.businessName,
+      filedAt: app.filedAt ? app.filedAt.toISOString() : null,
+      approvedAt: app.approvedAt ? app.approvedAt.toISOString() : null,
+      fssaiNumber: app.status === 'approved' ? app.fssaiNumber : null,
+      certificateUrl,
+    };
+    res.json(view);
   } catch (err) {
     next(err);
   }

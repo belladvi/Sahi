@@ -91,7 +91,7 @@ export function Confirm() {
         setError(res.error ?? 'Could not file. Please try again.');
         return;
       }
-      navigate('/dashboard');
+      navigate('/status');
     } catch {
       setError('Network error. Please try again.');
     } finally {

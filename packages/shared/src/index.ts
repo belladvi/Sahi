@@ -180,6 +180,25 @@ export const formASchema = z.object({
 });
 export type FormAInput = z.infer<typeof formASchema>;
 
+// --- Filing status / state machine (screen 9 / ticket 16) -----------------
+/** Baker-facing application status. Government queries are NOT surfaced to her
+ * (we fix them for free) — `gov_query` reads as "under review". */
+export type FilingStatus = 'draft' | 'paid' | 'preparing' | 'filed' | 'gov_query' | 'approved';
+
+export interface FilingStatusView {
+  status: FilingStatus;
+  businessName: string | null;
+  filedAt: string | null;
+  approvedAt: string | null;
+  fssaiNumber: string | null;
+  certificateUrl: string | null; // short-lived signed URL, only once approved
+}
+
+/** Whether the baker has actually filed (so the status timeline makes sense). */
+export function hasFiled(status: FilingStatus): boolean {
+  return status === 'filed' || status === 'gov_query' || status === 'approved';
+}
+
 /** What the baker is allowed to see (category mapping is intentionally excluded). */
 export interface DraftApplication {
   id: string;

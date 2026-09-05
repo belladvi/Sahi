@@ -199,7 +199,65 @@ describe('POST /api/applications/current/form-a', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, status: 'filed' });
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'filed' }) }),
+      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'filed', filedAt: expect.any(Date) }) }),
     );
+  });
+});
+
+describe('GET /api/applications/current/filing', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+  });
+
+  const filedRow = {
+    ...row,
+    businessName: 'Riya’s Kitchen',
+    filedAt: new Date('2026-09-02T10:00:00.000Z'),
+    approvedAt: null,
+    fssaiNumber: null,
+    certificateKey: null,
+  };
+
+  it('401 when signed out', async () => {
+    getSession.mockResolvedValue(null);
+    const res = await request(makeApp()).get('/api/applications/current/filing');
+    expect(res.status).toBe(401);
+  });
+
+  it('filed: reports the timeline, no number or certificate yet', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ ...filedRow, status: 'filed' });
+    const res = await request(makeApp()).get('/api/applications/current/filing');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('filed');
+    expect(res.body.filedAt).toBe('2026-09-02T10:00:00.000Z');
+    expect(res.body.fssaiNumber).toBeNull();
+    expect(res.body.certificateUrl).toBeNull();
+  });
+
+  it('gov_query is passed through (UI hides it as “under review”), no number leaks', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ ...filedRow, status: 'gov_query' });
+    const res = await request(makeApp()).get('/api/applications/current/filing');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('gov_query');
+    expect(res.body.fssaiNumber).toBeNull();
+  });
+
+  it('approved: surfaces the number and a signed certificate URL', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({
+      ...filedRow,
+      status: 'approved',
+      approvedAt: new Date('2026-09-09T10:00:00.000Z'),
+      fssaiNumber: '12345678901234',
+      certificateKey: 'applications/app1/certificate/cert.pdf',
+    });
+    const res = await request(makeApp()).get('/api/applications/current/filing');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('approved');
+    expect(res.body.fssaiNumber).toBe('12345678901234');
+    expect(res.body.certificateUrl).toContain('/api/storage/object');
   });
 });
