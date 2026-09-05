@@ -57,6 +57,7 @@ model Application {
   // approval (screen 9 live state; set by Ops in ticket 18)
   fssaiNumber    String? // 14-digit FSSAI registration number, once approved
   certificateKey String? // object-storage key for the certificate PDF
+  verifyToken    String?   @unique // public buyer-verify token (ticket 22)
   filedAt        DateTime? // when Form-A was filed (drives the status timeline)
   approvedAt     DateTime? // when Ops published the number
 

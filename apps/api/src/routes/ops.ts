@@ -1,14 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import {
   allowedOpsTransitions,
   opsTransitionSchema,
+  publishSchema,
   type FilingStatus,
   type OpsApplicationDetail,
   type OpsDocLink,
   type OpsQueueItem,
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
-import { getStorage } from '../lib/storage.js';
+import { getStorage, purgeRawIdDocs } from '../lib/storage.js';
 import { requireRole } from '../middleware/auth.js';
 
 export const opsRouter: Router = Router();
@@ -87,6 +89,7 @@ opsRouter.get('/ops/applications/:id', requireRole('ops', 'admin'), async (req, 
       aadhaarMasked: app.aadhaarMasked,
       phone: saved?.phone ?? null,
       email: saved?.email ?? null,
+      fssaiNumber: app.fssaiNumber,
       documents,
       events: app.events.map((e: (typeof app.events)[number]) => ({
         id: e.id,
@@ -139,6 +142,59 @@ opsRouter.post('/ops/applications/:id/transition', requireRole('ops', 'admin'), 
     });
     console.log(`[audit] ops ${req.user?.id} moved application ${app.id}: ${from} -> ${toStatus}`);
     res.json({ ok: true, status: updated.status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Signed upload URL for the approval certificate PDF (role-gated). Ops PUTs the
+// file to /api/storage/object with this URL, then passes the key to /publish.
+opsRouter.post('/ops/applications/:id/certificate-upload-url', requireRole('ops', 'admin'), (req, res) => {
+  const key = `applications/${String(req.params.id)}/certificate/${randomUUID()}.pdf`;
+  const storage = getStorage();
+  res.status(201).json({ key, upload: storage.signUpload(key, 'application/pdf'), mock: storage.mock });
+});
+
+// Approve + publish (screen 18). Blocked until a valid 14-digit number AND a
+// stored certificate are present. One transaction: flip to approved, store the
+// number/certificate, mint the public verify token, and audit-log it. Then
+// enqueue the baker notification and run the raw-ID retention purge (ticket 13).
+opsRouter.post('/ops/applications/:id/publish', requireRole('ops', 'admin'), async (req, res, next) => {
+  try {
+    const parsed = publishSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const id = String(req.params.id);
+    const app = await prisma.application.findUnique({ where: { id }, select: { id: true, status: true, verifyToken: true } });
+    if (!app) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    // Only a filed (or queried) application can be approved.
+    if (app.status !== 'filed' && app.status !== 'gov_query') {
+      res.status(409).json({ error: `Cannot publish from status ${app.status}` });
+      return;
+    }
+    const { fssaiNumber, certificateKey } = parsed.data;
+    const verifyToken = app.verifyToken ?? randomUUID();
+    await prisma.$transaction(async (tx) => {
+      await tx.application.update({
+        where: { id },
+        data: { status: 'approved', fssaiNumber, certificateKey, verifyToken, approvedAt: new Date() },
+      });
+      await tx.filingEvent.create({
+        data: { applicationId: id, fromStatus: app.status, toStatus: 'approved', note: `FSSAI ${fssaiNumber}`, actorId: req.user?.id ?? null },
+      });
+    });
+    // Retention: drop any raw Aadhaar objects post-approval (no-op today — we
+    // never persist raw Aadhaar, but this is the wired trigger from ticket 13).
+    await purgeRawIdDocs(id);
+    // Notification is enqueued here; real WhatsApp delivery lands in ticket 26.
+    console.log(`[notify] enqueue live-number message for application ${id} (FSSAI ${fssaiNumber})`);
+    console.log(`[audit] ops ${req.user?.id} PUBLISHED application ${id}: ${app.status} -> approved`);
+    res.json({ ok: true, status: 'approved', verifyToken });
   } catch (err) {
     next(err);
   }

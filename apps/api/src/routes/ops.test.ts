@@ -12,10 +12,12 @@ const eventCreate = vi.fn();
 const $transaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
   cb({ application: { update }, filingEvent: { create: eventCreate } }),
 );
+const deleteMany = vi.fn(async () => ({ count: 0 }));
 vi.mock('@sahi/db', () => ({
   prisma: {
-    application: { findMany, findUnique },
+    application: { findMany, findUnique, update },
     filingEvent: { create: eventCreate },
+    storedObject: { deleteMany },
     $transaction,
   },
 }));
@@ -130,5 +132,60 @@ describe('Ops console', () => {
     expect(eventCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ toStatus: 'gov_query', note: 'Address proof unclear' }) }),
     );
+  });
+
+  it('issues a signed certificate upload URL (ops only)', async () => {
+    getSession.mockResolvedValue(ops);
+    const res = await request(makeApp()).post('/api/ops/applications/app1/certificate-upload-url');
+    expect(res.status).toBe(201);
+    expect(res.body.key).toMatch(/^applications\/app1\/certificate\//);
+    expect(res.body.upload.url).toContain('/api/storage/object');
+  });
+
+  it('publish is rejected without a valid 14-digit number', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '123', certificateKey: 'applications/app1/certificate/c.pdf' });
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('publish is rejected without a certificate', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '12345678901234' });
+    expect(res.status).toBe(400);
+  });
+
+  it('publish is blocked from a non-filed status (409)', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'preparing', verifyToken: null });
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '12345678901234', certificateKey: 'applications/app1/certificate/c.pdf' });
+    expect(res.status).toBe(409);
+  });
+
+  it('publish approves: sets number, mints a verify token, audit-logs it', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+    update.mockResolvedValue({ status: 'approved' });
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '1234 5678 9012 34', certificateKey: 'applications/app1/certificate/c.pdf' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('approved');
+    expect(res.body.verifyToken).toBeTruthy();
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'approved', fssaiNumber: '12345678901234' }) }),
+    );
+    expect(eventCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ toStatus: 'approved' }) }),
+    );
+    expect(deleteMany).toHaveBeenCalled(); // retention purge ran
   });
 });

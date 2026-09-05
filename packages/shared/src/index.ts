@@ -238,6 +238,7 @@ export interface OpsApplicationDetail extends OpsQueueItem {
   aadhaarMasked: string | null;
   phone: string | null;
   email: string | null;
+  fssaiNumber: string | null; // set once published (ticket 18)
   documents: OpsDocLink[];
   events: OpsFilingEvent[];
 }
@@ -257,6 +258,21 @@ export const opsTransitionSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 export type OpsTransition = z.infer<typeof opsTransitionSchema>;
+
+// --- Ops approval + publish (screen 18 / ticket 18) -----------------------
+/** FSSAI registration numbers are 14 digits. */
+export const FSSAI_NUMBER_RE = /^\d{14}$/;
+export function isValidFssaiNumber(s: string): boolean {
+  return FSSAI_NUMBER_RE.test(s.replace(/\s/g, ''));
+}
+
+/** Ops publish payload: the approved number + the stored certificate key.
+ * Publish is blocked (server + client) until both are present and valid. */
+export const publishSchema = z.object({
+  fssaiNumber: z.string().trim().transform((s) => s.replace(/\s/g, '')).refine(isValidFssaiNumber, 'FSSAI number must be 14 digits'),
+  certificateKey: z.string().trim().min(1, 'Attach the certificate PDF').max(300),
+});
+export type PublishInput = z.infer<typeof publishSchema>;
 
 /** Allowed ops transitions from a given status (approval handled separately). */
 export function allowedOpsTransitions(from: FilingStatus): FilingStatus[] {

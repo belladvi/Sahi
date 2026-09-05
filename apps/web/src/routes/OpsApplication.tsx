@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { allowedOpsTransitions, type FilingStatus, type OpsApplicationDetail } from '@sahi/shared';
+import { allowedOpsTransitions, isValidFssaiNumber, type FilingStatus, type OpsApplicationDetail } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
-import { getOpsApplication, transitionApplication } from '../lib/ops';
+import { getOpsApplication, transitionApplication, uploadCertificate, publishApplication } from '../lib/ops';
 
 const ACTION_LABEL: Record<string, string> = {
   filed: 'Mark filed to FoSCoS',
@@ -30,6 +30,12 @@ export function OpsApplication() {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Approval / publish state
+  const [num1, setNum1] = useState('');
+  const [num2, setNum2] = useState('');
+  const [certKey, setCertKey] = useState<string | null>(null);
+  const [certName, setCertName] = useState<string | null>(null);
+  const [certBusy, setCertBusy] = useState(false);
 
   async function load() {
     const a = await getOpsApplication(id);
@@ -77,6 +83,37 @@ export function OpsApplication() {
 
   const transitions = allowedOpsTransitions(app.status);
   const needsNote = transitions.includes('gov_query');
+  const canApprove = app.status === 'filed' || app.status === 'gov_query';
+  const numberClean = num1.replace(/\s/g, '');
+  const numbersMatch = numberClean.length > 0 && numberClean === num2.replace(/\s/g, '');
+  const canPublish = isValidFssaiNumber(num1) && numbersMatch && !!certKey && !busy && !certBusy;
+
+  async function attachCertificate(file: File) {
+    setCertBusy(true);
+    setError(null);
+    try {
+      const key = await uploadCertificate(id, file);
+      setCertKey(key);
+      setCertName(file.name);
+    } catch {
+      setError('Certificate upload failed — try again.');
+    } finally {
+      setCertBusy(false);
+    }
+  }
+
+  async function publish() {
+    if (!certKey) return;
+    setBusy(true);
+    setError(null);
+    const res = await publishApplication(id, numberClean, certKey);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error ?? 'Could not publish.');
+      return;
+    }
+    await load();
+  }
 
   return (
     <AppShell>
@@ -129,6 +166,66 @@ export function OpsApplication() {
               ))}
             </div>
           </div>
+        )}
+
+        {app.status === 'approved' && (
+          <Surface className="border border-verified/30 bg-verified/5">
+            <p className="text-sm font-semibold text-verified">Published · live</p>
+            <p className="mt-1 text-sm text-copy">FSSAI {app.fssaiNumber}</p>
+          </Surface>
+        )}
+
+        {canApprove && (
+          <Surface className="space-y-3">
+            <p className="text-sm font-semibold text-copy">Approve &amp; publish</p>
+            <p className="text-xs text-copy-muted">
+              FoSCoS has no API — type the approved 14-digit number from the portal and attach the
+              certificate. Publishing flips the baker’s app to live.
+            </p>
+            <input
+              value={num1}
+              onChange={(e) => setNum1(e.target.value)}
+              inputMode="numeric"
+              placeholder="FSSAI number (14 digits)"
+              className="w-full rounded-xl bg-app px-3 py-2.5 text-sm tracking-[0.12em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
+            />
+            <input
+              value={num2}
+              onChange={(e) => setNum2(e.target.value)}
+              inputMode="numeric"
+              placeholder="Re-enter to confirm"
+              className="w-full rounded-xl bg-app px-3 py-2.5 text-sm tracking-[0.12em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
+            />
+            {num2.length > 0 && !numbersMatch && (
+              <p className="text-xs text-danger">The two numbers don’t match.</p>
+            )}
+            {certKey ? (
+              <div className="flex items-center justify-between rounded-xl border border-verified/30 bg-verified/5 px-3 py-2.5">
+                <span className="truncate text-sm text-copy">📄 {certName ?? 'certificate.pdf'} · attached ✓</span>
+                <button type="button" onClick={() => { setCertKey(null); setCertName(null); }} className="shrink-0 text-xs font-semibold text-copy-muted">
+                  Replace
+                </button>
+              </div>
+            ) : (
+              <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm font-medium text-copy-muted hover:text-copy">
+                {certBusy ? 'Uploading…' : '＋ Attach certificate PDF'}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  hidden
+                  disabled={certBusy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void attachCertificate(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+            <PrimaryAction type="button" disabled={!canPublish} onClick={publish}>
+              {busy ? 'Publishing…' : 'Publish — flip to live'}
+            </PrimaryAction>
+          </Surface>
         )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
