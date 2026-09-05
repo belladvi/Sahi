@@ -60,6 +60,7 @@ model Application {
   verifyToken    String?   @unique // public buyer-verify token (ticket 22)
   filedAt        DateTime? // when Form-A was filed (drives the status timeline)
   approvedAt     DateTime? // when Ops published the number
+  renewedAt      DateTime? // last annual renewal (ticket 25)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

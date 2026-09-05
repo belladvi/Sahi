@@ -11,7 +11,8 @@ const findUnique = vi.fn();
 const update = vi.fn();
 const findFirst = vi.fn();
 const paymentFindFirst = vi.fn();
-vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst }, payment: { findFirst: paymentFindFirst } } }));
+const paymentCreate = vi.fn();
+vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst }, payment: { findFirst: paymentFindFirst, create: paymentCreate } } }));
 
 const { applicationsRouter } = await import('./applications.js');
 
@@ -221,6 +222,49 @@ describe('GET /api/applications/current/trust-score', () => {
     expect(res.status).toBe(200);
     expect(res.body.score).toBe(85);
     expect(res.body.factors.find((f: { key: string }) => f.key === 'emailOnFile').done).toBe(false);
+  });
+});
+
+describe('renewal', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+    update.mockReset();
+    paymentCreate.mockReset();
+  });
+
+  it('GET renewal: 404 without an active licence', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue(null);
+    const res = await request(makeApp()).get('/api/applications/current/renewal');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET renewal: reports cohort + due date + ₹399 breakdown', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ ...row, status: 'approved', approvedAt: new Date('2026-09-05T00:00:00Z'), renewedAt: null });
+    const res = await request(makeApp()).get('/api/applications/current/renewal');
+    expect(res.status).toBe(200);
+    expect(res.body.cohort).toBe('perpetual');
+    expect(res.body.total).toBe(399);
+    expect(res.body.dueDate.slice(0, 10)).toBe('2027-09-05');
+  });
+
+  it('POST renew (mock mode): records payment, stamps renewedAt, pushes due date', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    const approvedAt = new Date('2026-09-05T00:00:00Z');
+    findFirst.mockResolvedValue({ ...row, id: 'app1', status: 'approved', approvedAt, renewedAt: null });
+    paymentCreate.mockResolvedValue({ id: 'pay1' });
+    update.mockResolvedValue({ id: 'app1', approvedAt, renewedAt: new Date('2027-01-01T00:00:00Z') });
+    const res = await request(makeApp()).post('/api/applications/current/renew');
+    expect(res.status).toBe(200);
+    expect(res.body.renewed).toBe(true);
+    expect(paymentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 39900, status: 'paid' }) }),
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ renewedAt: expect.any(Date) }) }),
+    );
   });
 });
 

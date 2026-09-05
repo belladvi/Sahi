@@ -13,7 +13,7 @@ import { Dashboard } from './routes/Dashboard';
 import { Badge } from './routes/Badge';
 import { Qr } from './routes/Qr';
 import { TrustScore } from './routes/TrustScore';
-import { Placeholder } from './routes/Placeholder';
+import { Renewal } from './routes/Renewal';
 import { OpsHome } from './routes/OpsHome';
 import { OpsApplication } from './routes/OpsApplication';
 import { RequireRole } from './components/RequireRole';
@@ -33,7 +33,7 @@ export const router = createBrowserRouter([
   { path: '/badge', element: <Badge /> },
   { path: '/qr', element: <Qr /> },
   { path: '/trust-score', element: <TrustScore /> },
-  { path: '/renewal', element: <Placeholder title="Stay active" note="Renewal (Screen 15) lands in ticket 25." /> },
+  { path: '/renewal', element: <Renewal /> },
   {
     path: '/ops',
     element: (

@@ -5,6 +5,11 @@ import {
   documentsSchema,
   formASchema,
   computeTrustScore,
+  renewalStatus,
+  RENEWAL_AMOUNT_PAISE,
+  RENEWAL_GOV_FEE_RUPEES,
+  RENEWAL_SERVICE_FEE_RUPEES,
+  RENEWAL_TOTAL_RUPEES,
   type ConfirmView,
   type DraftApplication,
   type FilingStatus,
@@ -16,6 +21,7 @@ import {
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
 import { getStorage } from '../lib/storage.js';
+import { getGateway, CURRENCY } from '../lib/payments.js';
 import { requireAuth } from '../middleware/auth.js';
 
 export const applicationsRouter: Router = Router();
@@ -324,6 +330,79 @@ applicationsRouter.get('/applications/current/trust-score', requireAuth(), async
       emailOnFile: !!(saved?.email && saved.email.trim().length > 0),
     };
     res.json(computeTrustScore(facts));
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function approvedAppForUser(userId: string) {
+  return prisma.application.findFirst({ where: { bakerId: userId, status: 'approved' }, orderBy: { updatedAt: 'desc' } });
+}
+
+// Renewal / stay-active status (screen 15): cohort + due-date from the issue date.
+applicationsRouter.get('/applications/current/renewal', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const app = await approvedAppForUser(userId);
+    if (!app || !app.approvedAt) {
+      res.status(404).json({ error: 'No active licence' });
+      return;
+    }
+    res.json({
+      ...renewalStatus(app.approvedAt, app.renewedAt ?? null),
+      govFee: RENEWAL_GOV_FEE_RUPEES,
+      serviceFee: RENEWAL_SERVICE_FEE_RUPEES,
+      total: RENEWAL_TOTAL_RUPEES,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Renew (₹399/yr) — reuses the ticket-12 payment gateway. In mock mode the
+// renewal is recorded + the due date pushed out immediately; live checkout
+// (real Razorpay renewal) is a follow-up.
+applicationsRouter.post('/applications/current/renew', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const app = await approvedAppForUser(userId);
+    if (!app || !app.approvedAt) {
+      res.status(404).json({ error: 'No active licence' });
+      return;
+    }
+    const gateway = getGateway();
+    const order = await gateway.createOrder({ amount: RENEWAL_AMOUNT_PAISE, currency: CURRENCY, receipt: `renew_${app.id}` });
+    await prisma.payment.create({
+      data: {
+        applicationId: app.id,
+        orderId: order.orderId,
+        amount: RENEWAL_AMOUNT_PAISE,
+        currency: CURRENCY,
+        status: gateway.mock ? 'paid' : 'created',
+      },
+    });
+    if (!gateway.mock) {
+      // Live: hand the order back for Razorpay checkout (webhook finalisation TBD).
+      res.status(201).json({ renewed: false, orderId: order.orderId, amount: RENEWAL_AMOUNT_PAISE, keyId: gateway.keyId, mock: false });
+      return;
+    }
+    const now = new Date();
+    const updated = await prisma.application.update({ where: { id: app.id }, data: { renewedAt: now } });
+    res.json({
+      renewed: true,
+      ...renewalStatus(updated.approvedAt as Date, updated.renewedAt ?? null, now),
+      govFee: RENEWAL_GOV_FEE_RUPEES,
+      serviceFee: RENEWAL_SERVICE_FEE_RUPEES,
+      total: RENEWAL_TOTAL_RUPEES,
+    });
   } catch (err) {
     next(err);
   }

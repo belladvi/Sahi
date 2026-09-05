@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createNoteSchema, maskAadhaar, isMaskedAadhaar, documentsSchema, computeTrustScore } from '@sahi/shared';
+import { createNoteSchema, maskAadhaar, isMaskedAadhaar, documentsSchema, computeTrustScore, renewalCohort, renewalStatus } from '@sahi/shared';
 
 // The web app validates with the SAME schema module the API uses on the server.
 describe('createNoteSchema (shared, used client-side)', () => {
@@ -49,5 +49,32 @@ describe('Trust Score (shared scoring rules)', () => {
   it('licence active alone is the biggest single factor (40)', () => {
     const { score } = computeTrustScore({ licenceActive: true, feeCurrent: false, documentsVerified: false, emailOnFile: false });
     expect(score).toBe(40);
+  });
+});
+
+describe('Renewal cohort + due-date (shared)', () => {
+  it('detects cohort from the issue date (1 Apr 2026 cutoff)', () => {
+    expect(renewalCohort(new Date('2026-09-05'))).toBe('perpetual');
+    expect(renewalCohort(new Date('2026-03-31'))).toBe('legacy');
+  });
+
+  it('due date is one year after issue when never renewed', () => {
+    const s = renewalStatus(new Date('2026-09-05T00:00:00Z'), null, new Date('2026-09-05T00:00:00Z'));
+    expect(s.dueDate.slice(0, 10)).toBe('2027-09-05');
+    expect(s.state).toBe('active');
+  });
+
+  it('flags due-soon within 30 days and overdue past the date', () => {
+    const issued = new Date('2026-09-05T00:00:00Z');
+    const dueSoon = renewalStatus(issued, null, new Date('2027-08-20T00:00:00Z'));
+    expect(dueSoon.state).toBe('due-soon');
+    const overdue = renewalStatus(issued, null, new Date('2027-10-01T00:00:00Z'));
+    expect(overdue.state).toBe('overdue');
+  });
+
+  it('a renewal pushes the due date out a year from the renewal', () => {
+    const s = renewalStatus(new Date('2026-09-05T00:00:00Z'), new Date('2027-09-01T00:00:00Z'), new Date('2027-09-01T00:00:00Z'));
+    expect(s.dueDate.slice(0, 10)).toBe('2028-09-01');
+    expect(s.state).toBe('active');
   });
 });

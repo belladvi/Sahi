@@ -289,6 +289,41 @@ export function allowedOpsTransitions(from: FilingStatus): FilingStatus[] {
   }
 }
 
+// --- Renewal / stay-active (screen 15 / ticket 25) ------------------------
+export const RENEWAL_GOV_FEE_RUPEES = 100;
+export const RENEWAL_SERVICE_FEE_RUPEES = 299;
+export const RENEWAL_TOTAL_RUPEES = RENEWAL_GOV_FEE_RUPEES + RENEWAL_SERVICE_FEE_RUPEES; // 399
+export const RENEWAL_AMOUNT_PAISE = RENEWAL_TOTAL_RUPEES * 100;
+
+/** Licences issued on/after 1 Apr 2026 are perpetual (annual ₹100 govt fee);
+ * earlier ones are legacy (a real renewal at expiry). */
+export const RENEWAL_COHORT_CUTOFF = new Date('2026-04-01T00:00:00.000Z');
+export type RenewalCohort = 'perpetual' | 'legacy';
+export function renewalCohort(issuedAt: Date): RenewalCohort {
+  return issuedAt.getTime() >= RENEWAL_COHORT_CUTOFF.getTime() ? 'perpetual' : 'legacy';
+}
+
+export type RenewalState = 'active' | 'due-soon' | 'overdue';
+export interface RenewalStatus {
+  cohort: RenewalCohort;
+  dueDate: string; // ISO date of the next annual action
+  daysUntilDue: number;
+  state: RenewalState;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Next annual due date + status. Base = last renewal (or issue) + 1 year.
+ * due-soon within 30 days; overdue once past. */
+export function renewalStatus(issuedAt: Date, lastRenewedAt: Date | null, now: Date = new Date()): RenewalStatus {
+  const base = lastRenewedAt ?? issuedAt;
+  const due = new Date(base.getTime());
+  due.setUTCFullYear(due.getUTCFullYear() + 1);
+  const daysUntilDue = Math.ceil((due.getTime() - now.getTime()) / DAY_MS);
+  const state: RenewalState = daysUntilDue < 0 ? 'overdue' : daysUntilDue <= 30 ? 'due-soon' : 'active';
+  return { cohort: renewalCohort(issuedAt), dueDate: due.toISOString(), daysUntilDue, state };
+}
+
 // --- Trust Score (screen 14 / ticket 24) ----------------------------------
 /** Real compliance/profile facts the score is computed from — no fabrication. */
 export interface TrustFacts {
