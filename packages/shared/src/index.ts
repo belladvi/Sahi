@@ -192,6 +192,7 @@ export interface FilingStatusView {
   approvedAt: string | null;
   fssaiNumber: string | null;
   certificateUrl: string | null; // short-lived signed URL, only once approved
+  verifyToken: string | null; // public buyer-verify token, only once approved
 }
 
 /** The baker has submitted her packet — from her side it's "we're handling it".

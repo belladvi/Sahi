@@ -288,6 +288,7 @@ applicationsRouter.get('/applications/current/filing', requireAuth(), async (req
       approvedAt: app.approvedAt ? app.approvedAt.toISOString() : null,
       fssaiNumber: app.status === 'approved' ? app.fssaiNumber : null,
       certificateUrl,
+      verifyToken: app.status === 'approved' ? app.verifyToken : null,
     };
     res.json(view);
   } catch (err) {
