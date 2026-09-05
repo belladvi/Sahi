@@ -43,11 +43,15 @@ export function Dashboard() {
     );
   }
 
-  const tiles: { label: string; icon: string; to: string }[] = [
-    { label: 'Verified badge', icon: '🛡️', to: '/badge' },
-    { label: 'QR code', icon: '🔳', to: '/qr' },
-    { label: 'Verify page', icon: '🔗', to: view.verifyToken ? `/verify/${view.verifyToken}` : '/badge' },
-    { label: 'Stay active', icon: '🔄', to: '/renewal' },
+  // The verify page is server-rendered (public), so open it as a full navigation.
+  const openVerify = () => {
+    if (view.verifyToken) window.open(`/verify/${view.verifyToken}`, '_blank', 'noopener');
+  };
+  const tiles: { label: string; icon: string; onClick: () => void }[] = [
+    { label: 'Verified badge', icon: '🛡️', onClick: () => navigate('/badge') },
+    { label: 'QR code', icon: '🔳', onClick: () => navigate('/qr') },
+    { label: 'Verify page', icon: '🔗', onClick: openVerify },
+    { label: 'Stay active', icon: '🔄', onClick: () => navigate('/renewal') },
   ];
 
   return (
@@ -104,7 +108,7 @@ export function Dashboard() {
             <button
               key={t.label}
               type="button"
-              onClick={() => navigate(t.to)}
+              onClick={t.onClick}
               className="flex min-h-24 flex-col justify-between rounded-2xl bg-app-raised p-4 text-left ring-1 ring-line hover:bg-app"
             >
               <span className="text-2xl">{t.icon}</span>

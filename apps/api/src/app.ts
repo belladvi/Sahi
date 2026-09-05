@@ -13,6 +13,7 @@ import { paymentsRouter } from './routes/payments.js';
 import { storageRouter } from './routes/storage.js';
 import { demoRouter } from './routes/demo.js';
 import { opsRouter } from './routes/ops.js';
+import { verifyRouter } from './routes/verify.js';
 
 export function createApp(): Express {
   const app = express();
@@ -47,6 +48,11 @@ export function createApp(): Express {
   app.use('/api', storageRouter);
   app.use('/api', demoRouter);
   app.use('/api', opsRouter);
+
+  // Public buyer-verify: JSON API + a server-rendered HTML page (with OG/meta).
+  // Mounted at root and BEFORE the SPA fallback so /verify/:token is SSR, not the
+  // SPA shell — link previews and first paint need real server-rendered HTML.
+  app.use(verifyRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {

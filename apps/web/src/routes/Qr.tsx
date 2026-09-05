@@ -92,7 +92,7 @@ export function Qr() {
 
         <button
           type="button"
-          onClick={() => token && navigate(`/verify/${token}`)}
+          onClick={() => token && window.open(`/verify/${token}`, '_blank', 'noopener')}
           disabled={!token}
           className="rounded-2xl bg-app-raised p-4 text-left text-sm ring-1 ring-line hover:bg-app disabled:opacity-50"
         >
