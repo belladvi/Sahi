@@ -11,6 +11,7 @@ import { Confirm } from './routes/Confirm';
 import { FilingStatus } from './routes/FilingStatus';
 import { Dashboard } from './routes/Dashboard';
 import { Badge } from './routes/Badge';
+import { Qr } from './routes/Qr';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { OpsApplication } from './routes/OpsApplication';
@@ -29,7 +30,7 @@ export const router = createBrowserRouter([
   { path: '/status', element: <FilingStatus /> },
   { path: '/dashboard', element: <Dashboard /> },
   { path: '/badge', element: <Badge /> },
-  { path: '/qr', element: <Placeholder title="QR code" note="QR code (Screen 12) lands in ticket 21." /> },
+  { path: '/qr', element: <Qr /> },
   { path: '/verify/:token', element: <Placeholder title="Verify page" note="Public buyer-verify page (Screen 13) lands in ticket 22." /> },
   { path: '/trust-score', element: <Placeholder title="Trust Score" note="Trust Score (Screen 14) lands in ticket 24." /> },
   { path: '/renewal', element: <Placeholder title="Stay active" note="Renewal (Screen 15) lands in ticket 25." /> },
