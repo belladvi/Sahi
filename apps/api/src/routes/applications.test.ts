@@ -189,17 +189,17 @@ describe('POST /api/applications/current/form-a', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('files Form-A and flips status to filed', async () => {
+  it('files Form-A and moves status to preparing (Ops files it to the government)', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     findFirst.mockResolvedValue({ id: 'app1' });
-    update.mockResolvedValue({ status: 'filed' });
+    update.mockResolvedValue({ status: 'preparing' });
     const res = await request(makeApp())
       .post('/api/applications/current/form-a')
       .send({ applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210', hygieneAccepted: true });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true, status: 'filed' });
+    expect(res.body).toEqual({ ok: true, status: 'preparing' });
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'filed', filedAt: expect.any(Date) }) }),
+      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'preparing' }) }),
     );
   });
 });

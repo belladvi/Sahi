@@ -194,9 +194,82 @@ export interface FilingStatusView {
   certificateUrl: string | null; // short-lived signed URL, only once approved
 }
 
-/** Whether the baker has actually filed (so the status timeline makes sense). */
+/** The baker has submitted her packet — from her side it's "we're handling it".
+ * Covers preparing (with ops) through approved. */
 export function hasFiled(status: FilingStatus): boolean {
+  return (
+    status === 'preparing' || status === 'filed' || status === 'gov_query' || status === 'approved'
+  );
+}
+
+/** Ops has actually sent it to the government portal (drives the "Sent to FoSCoS"
+ * milestone). `gov_query` counts — it's been filed, the query is hidden from her. */
+export function sentToGovernment(status: FilingStatus): boolean {
   return status === 'filed' || status === 'gov_query' || status === 'approved';
+}
+
+// --- Ops console (screen 17/18 / ticket 17) --------------------------------
+/** A row in the ops filing queue (staff-only). */
+export interface OpsQueueItem {
+  id: string;
+  status: FilingStatus;
+  businessName: string | null;
+  applicantName: string | null;
+  products: string[];
+  premises: Premises | null;
+  filedAt: string | null;
+  createdAt: string;
+}
+
+/** A document link in the ops packet (short-lived signed URL). */
+export interface OpsDocLink {
+  label: string;
+  url: string | null;
+  note?: string;
+}
+
+/** The full assembled packet Ops files with the government. */
+export interface OpsApplicationDetail extends OpsQueueItem {
+  category: string | null; // ops (unlike the baker) DOES see the mapped category
+  subCategory: string | null;
+  kindOfBusiness: string | null;
+  description: string | null;
+  residentialAddress: string | null;
+  aadhaarMasked: string | null;
+  phone: string | null;
+  email: string | null;
+  documents: OpsDocLink[];
+  events: OpsFilingEvent[];
+}
+
+export interface OpsFilingEvent {
+  id: string;
+  fromStatus: string | null;
+  toStatus: string;
+  note: string | null;
+  createdAt: string;
+}
+
+/** Ops status transitions (the rejection-recovery loop). Approval (→approved)
+ * is a separate, richer action (ticket 18), not part of this set. */
+export const opsTransitionSchema = z.object({
+  toStatus: z.enum(['filed', 'gov_query']),
+  note: z.string().trim().max(1000).optional(),
+});
+export type OpsTransition = z.infer<typeof opsTransitionSchema>;
+
+/** Allowed ops transitions from a given status (approval handled separately). */
+export function allowedOpsTransitions(from: FilingStatus): FilingStatus[] {
+  switch (from) {
+    case 'preparing':
+      return ['filed'];
+    case 'filed':
+      return ['gov_query']; // + approved via the approval action (ticket 18)
+    case 'gov_query':
+      return ['filed']; // resubmitted after fixing the query
+    default:
+      return [];
+  }
 }
 
 /** What the baker is allowed to see (category mapping is intentionally excluded). */

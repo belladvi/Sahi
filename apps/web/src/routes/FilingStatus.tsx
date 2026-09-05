@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { hasFiled, type FilingStatusView } from '@sahi/shared';
+import { hasFiled, sentToGovernment, type FilingStatusView } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
@@ -62,16 +62,21 @@ export function FilingStatus() {
 
   const approved = view.status === 'approved';
 
+  const sent = sentToGovernment(view.status);
   const milestones: Milestone[] = [
     { title: 'Details checked', detail: 'Everything looked good', done: true },
     {
       title: 'Sent to the government portal (FoSCoS)',
-      detail: view.filedAt ? `Submitted on ${formatDate(view.filedAt)}` : 'Submitted',
-      done: true,
+      detail: sent
+        ? view.filedAt
+          ? `Submitted on ${formatDate(view.filedAt)}`
+          : 'Submitted'
+        : 'Preparing your filing…',
+      done: sent,
     },
     {
       title: 'Under government review',
-      detail: 'Typically about 7 days',
+      detail: sent ? 'Typically about 7 days' : 'Starts once we file',
       done: false,
     },
   ];

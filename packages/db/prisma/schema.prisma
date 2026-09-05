@@ -64,6 +64,22 @@ model Application {
   updatedAt DateTime @updatedAt
 
   payments Payment[]
+  events   FilingEvent[]
+}
+
+/// Audit log of application status transitions (ticket 17). One row per Ops
+/// action — the query `note` is internal and never shown to the baker.
+model FilingEvent {
+  id            String   @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  note          String? // internal (e.g. government query detail) — hidden from baker
+  actorId       String? // the Ops/admin user who made the change
+  createdAt     DateTime @default(now())
+
+  @@index([applicationId])
 }
 
 // --- Payment (M2 ticket 12: ₹599 checkout) ---

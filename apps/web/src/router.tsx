@@ -11,6 +11,7 @@ import { Confirm } from './routes/Confirm';
 import { FilingStatus } from './routes/FilingStatus';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
+import { OpsApplication } from './routes/OpsApplication';
 import { RequireRole } from './components/RequireRole';
 
 export const router = createBrowserRouter([
@@ -33,6 +34,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireRole roles={['ops', 'admin']}>
         <OpsHome />
+      </RequireRole>
+    ),
+  },
+  {
+    path: '/ops/:id',
+    element: (
+      <RequireRole roles={['ops', 'admin']}>
+        <OpsApplication />
       </RequireRole>
     ),
   },

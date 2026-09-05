@@ -246,8 +246,9 @@ applicationsRouter.post('/applications/current/form-a', requireAuth(), async (re
         applicantName,
         businessName,
         residentialAddress,
-        status: 'filed',
-        filedAt: new Date(),
+        // Baker-submit lands in `preparing` (in the Ops queue). Ops marks it
+        // `filed` once actually sent to the government portal (ticket 17).
+        status: 'preparing',
         formA: { phone, email: email ?? '', hygieneAccepted, submittedAt: new Date().toISOString() },
       },
       select: { status: true },

@@ -12,6 +12,7 @@ import { accountRouter } from './routes/account.js';
 import { paymentsRouter } from './routes/payments.js';
 import { storageRouter } from './routes/storage.js';
 import { demoRouter } from './routes/demo.js';
+import { opsRouter } from './routes/ops.js';
 
 export function createApp(): Express {
   const app = express();
@@ -45,6 +46,7 @@ export function createApp(): Express {
   app.use('/api', paymentsRouter);
   app.use('/api', storageRouter);
   app.use('/api', demoRouter);
+  app.use('/api', opsRouter);
 
   // In production the API serves the built SPA from the same Docker image.
   if (process.env.NODE_ENV === 'production') {
