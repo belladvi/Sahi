@@ -10,7 +10,8 @@ vi.mock('../auth.js', () => ({ auth: { api: { getSession } } }));
 const findUnique = vi.fn();
 const update = vi.fn();
 const findFirst = vi.fn();
-vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst } } }));
+const paymentFindFirst = vi.fn();
+vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst }, payment: { findFirst: paymentFindFirst } } }));
 
 const { applicationsRouter } = await import('./applications.js');
 
@@ -169,6 +170,57 @@ describe('GET /api/applications/current/confirm', () => {
     expect(res.body.hygieneAccepted).toBe(false);
     // Hidden category mapping never leaks.
     expect(res.body).not.toHaveProperty('category');
+  });
+});
+
+describe('GET /api/applications/current/trust-score', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    findFirst.mockReset();
+    paymentFindFirst.mockReset();
+  });
+
+  it('401 when signed out', async () => {
+    getSession.mockResolvedValue(null);
+    const res = await request(makeApp()).get('/api/applications/current/trust-score');
+    expect(res.status).toBe(401);
+  });
+
+  it('computes 100 for a fully-compliant baker from real facts', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({
+      ...row,
+      status: 'approved',
+      fssaiNumber: '12345678901234',
+      premises: 'own',
+      photoKey: 'k',
+      aadhaarMasked: 'XXXX XXXX 1234',
+      addressProofKey: null,
+      formA: { email: 'riya@example.com' },
+    });
+    paymentFindFirst.mockResolvedValue({ id: 'p1' });
+    const res = await request(makeApp()).get('/api/applications/current/trust-score');
+    expect(res.status).toBe(200);
+    expect(res.body.score).toBe(100);
+  });
+
+  it('drops the email points when no email is on file', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({
+      ...row,
+      status: 'approved',
+      fssaiNumber: '12345678901234',
+      premises: 'own',
+      photoKey: 'k',
+      aadhaarMasked: 'XXXX XXXX 1234',
+      addressProofKey: null,
+      formA: { email: '' },
+    });
+    paymentFindFirst.mockResolvedValue({ id: 'p1' });
+    const res = await request(makeApp()).get('/api/applications/current/trust-score');
+    expect(res.status).toBe(200);
+    expect(res.body.score).toBe(85);
+    expect(res.body.factors.find((f: { key: string }) => f.key === 'emailOnFile').done).toBe(false);
   });
 });
 

@@ -289,6 +289,48 @@ export function allowedOpsTransitions(from: FilingStatus): FilingStatus[] {
   }
 }
 
+// --- Trust Score (screen 14 / ticket 24) ----------------------------------
+/** Real compliance/profile facts the score is computed from — no fabrication. */
+export interface TrustFacts {
+  licenceActive: boolean; // application approved + FSSAI number live
+  feeCurrent: boolean; // a paid payment on file, nothing due
+  documentsVerified: boolean; // required docs present (photo + Aadhaar + address if renting)
+  emailOnFile: boolean; // a real (non-synthetic) email so customers can reach her
+}
+
+export interface TrustFactor {
+  key: keyof TrustFacts;
+  label: string;
+  detail: string;
+  done: boolean;
+  points: number; // contribution to the 100-point score
+}
+
+export interface TrustScore {
+  score: number; // 0–100
+  factors: TrustFactor[];
+}
+
+const TRUST_WEIGHTS: { key: keyof TrustFacts; label: string; done: string; todo: string; points: number }[] = [
+  { key: 'licenceActive', label: 'Licence active', done: 'Government status is live', todo: 'Your licence isn’t live yet', points: 40 },
+  { key: 'feeCurrent', label: 'Fee current', done: 'No payment due', todo: 'A payment is due', points: 25 },
+  { key: 'documentsVerified', label: 'Documents verified', done: 'Identity and address checked', todo: 'Some documents are missing', points: 20 },
+  { key: 'emailOnFile', label: 'Contact email added', done: 'Customers can reach you by email', todo: 'Add your email so customers can reach you', points: 15 },
+];
+
+/** Rule-based, explainable Trust Score from real facts. Weights sum to 100. */
+export function computeTrustScore(facts: TrustFacts): TrustScore {
+  const factors = TRUST_WEIGHTS.map((w) => ({
+    key: w.key,
+    label: w.label,
+    detail: facts[w.key] ? w.done : w.todo,
+    done: facts[w.key],
+    points: w.points,
+  }));
+  const score = factors.reduce((sum, f) => sum + (f.done ? f.points : 0), 0);
+  return { score, factors };
+}
+
 /** What the baker is allowed to see (category mapping is intentionally excluded). */
 export interface DraftApplication {
   id: string;

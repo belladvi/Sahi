@@ -4,11 +4,13 @@ import {
   draftUpdateSchema,
   documentsSchema,
   formASchema,
+  computeTrustScore,
   type ConfirmView,
   type DraftApplication,
   type FilingStatus,
   type FilingStatusView,
   type Premises,
+  type TrustFacts,
   type TurnoverBand,
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
@@ -291,6 +293,37 @@ applicationsRouter.get('/applications/current/filing', requireAuth(), async (req
       verifyToken: app.status === 'approved' ? app.verifyToken : null,
     };
     res.json(view);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Trust Score (screen 14): computed from the baker's REAL compliance/profile
+// facts — no fabricated data. Explainable breakdown returned for the UI.
+applicationsRouter.get('/applications/current/trust-score', requireAuth(), async (req, res, next) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    const app = await prisma.application.findFirst({
+      where: { bakerId: userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!app) {
+      res.status(404).json({ error: 'No application' });
+      return;
+    }
+    const paid = await prisma.payment.findFirst({ where: { applicationId: app.id, status: 'paid' }, select: { id: true } });
+    const saved = (app.formA as { email?: string } | null) ?? null;
+    const facts: TrustFacts = {
+      licenceActive: app.status === 'approved' && !!app.fssaiNumber,
+      feeCurrent: !!paid,
+      documentsVerified: !!app.photoKey && !!app.aadhaarMasked && (app.premises !== 'rent' || !!app.addressProofKey),
+      emailOnFile: !!(saved?.email && saved.email.trim().length > 0),
+    };
+    res.json(computeTrustScore(facts));
   } catch (err) {
     next(err);
   }

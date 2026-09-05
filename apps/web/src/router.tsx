@@ -12,6 +12,7 @@ import { FilingStatus } from './routes/FilingStatus';
 import { Dashboard } from './routes/Dashboard';
 import { Badge } from './routes/Badge';
 import { Qr } from './routes/Qr';
+import { TrustScore } from './routes/TrustScore';
 import { Placeholder } from './routes/Placeholder';
 import { OpsHome } from './routes/OpsHome';
 import { OpsApplication } from './routes/OpsApplication';
@@ -31,7 +32,7 @@ export const router = createBrowserRouter([
   { path: '/dashboard', element: <Dashboard /> },
   { path: '/badge', element: <Badge /> },
   { path: '/qr', element: <Qr /> },
-  { path: '/trust-score', element: <Placeholder title="Trust Score" note="Trust Score (Screen 14) lands in ticket 24." /> },
+  { path: '/trust-score', element: <TrustScore /> },
   { path: '/renewal', element: <Placeholder title="Stay active" note="Renewal (Screen 15) lands in ticket 25." /> },
   {
     path: '/ops',
