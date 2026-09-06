@@ -1,0 +1,180 @@
+/* sahi-hero.css — Sahi FSSAI hero: layered 3D licence credential + parallax.
+ * Mobile-first (fits the 390px app frame). Pure CSS motion, off the critical
+ * path — the copy and CTA work even if this file fails to load — and every
+ * animation is disabled under prefers-reduced-motion (final state stays visible).
+ * Prefixed .sahi-* so it can't collide with app/Tailwind styles. */
+
+.sahi-hero {
+  position: relative;
+  overflow: hidden;
+  background: #0b1622;
+  background-image: radial-gradient(#1c2f40 1px, transparent 1px);
+  background-size: 22px 22px;
+  padding: 24px 20px 30px;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+/* warm glow behind the credential */
+.sahi-hero::before {
+  content: '';
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 300px;
+  max-width: 85%;
+  background: radial-gradient(circle, rgba(242, 183, 5, 0.2), rgba(242, 183, 5, 0) 62%);
+  pointer-events: none;
+}
+
+.sahi-display {
+  font-family: 'Fraunces Variable', Fraunces, Georgia, serif;
+}
+
+.sahi-stage {
+  position: relative;
+  height: 270px;
+  margin: 20px auto 6px;
+  display: flex;
+  justify-content: center;
+  perspective: 1000px;
+}
+/* idle float wrapper */
+.sahi-float {
+  position: relative;
+  width: 196px;
+  height: 244px;
+  transform-style: preserve-3d;
+  animation: sahiFloat 6s ease-in-out infinite;
+}
+/* the tilting group — pointer/drag parallax writes --rx / --ry */
+.sahi-rot {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, -13deg));
+}
+/* depth layer behind the card */
+.sahi-back {
+  position: absolute;
+  inset: -14px;
+  border-radius: 20px;
+  background: #0e1c29;
+  border: 0.5px solid #24384a;
+  transform: translateZ(-40px);
+}
+/* the card face */
+.sahi-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: #122130;
+  border: 0.5px solid #3a4b5c;
+  overflow: hidden;
+  box-shadow: 0 26px 50px -18px rgba(0, 0, 0, 0.7);
+}
+.sahi-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.1) 48%, transparent 58%);
+  animation: sahiSweep 5.5s linear infinite;
+}
+/* gold seal — lifted above the surface */
+.sahi-seal {
+  position: absolute;
+  top: 92px;
+  left: 50%;
+  width: 62px;
+  height: 62px;
+  margin-left: -31px;
+  border-radius: 50%;
+  transform: translateZ(46px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 35% 30%, #ffe08a, #f2b705 55%, #a97c04);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+.sahi-seal::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent, rgba(255, 224, 138, 0.55), transparent 40%);
+  animation: sahiSpin 7s linear infinite;
+}
+/* status chips — furthest forward for the strongest parallax */
+.sahi-chip {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: #0e1c29;
+  border: 0.5px solid #33475a;
+  color: #e6edf3;
+  font-size: 11px;
+  padding: 6px 11px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.sahi-chip--1 {
+  top: 14px;
+  left: -22px;
+  transform: translateZ(70px);
+  animation: sahiBob 4.5s ease-in-out infinite;
+}
+.sahi-chip--2 {
+  bottom: 26px;
+  right: -24px;
+  transform: translateZ(60px);
+  animation: sahiBob 5.2s ease-in-out infinite 0.8s;
+}
+
+@keyframes sahiFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+@keyframes sahiSweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+@keyframes sahiSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sahiBob {
+  0%,
+  100% {
+    transform: translateY(0) translateZ(65px);
+  }
+  50% {
+    transform: translateY(-8px) translateZ(65px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sahi-float,
+  .sahi-card::after,
+  .sahi-seal::before,
+  .sahi-chip--1,
+  .sahi-chip--2 {
+    animation: none !important;
+  }
+  .sahi-rot {
+    transition: none;
+  }
+}
