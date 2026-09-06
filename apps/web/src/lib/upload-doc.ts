@@ -1,4 +1,5 @@
 import type { DocumentsInput } from '@sahi/shared';
+import { getDraftToken } from './draft';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -8,10 +9,12 @@ export type DocType = 'photo' | 'aadhaar' | 'address';
  * storage key. NOTE: never call this for the raw Aadhaar image — that stays
  * on the device; only its masked number is saved via saveDocuments(). */
 export async function uploadDoc(docType: DocType, blob: Blob, contentType: string, ext: string): Promise<string> {
+  const draftToken = getDraftToken();
+  if (!draftToken) throw new Error('missing draft');
   const signRes = await fetch(`${API}/api/storage/uploads`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-draft-token': draftToken },
     body: JSON.stringify({ docType, contentType, ext }),
   });
   if (signRes.status === 401) throw new Error('unauthenticated');
@@ -26,10 +29,12 @@ export async function uploadDoc(docType: DocType, blob: Blob, contentType: strin
 }
 
 export async function saveDocuments(payload: DocumentsInput): Promise<boolean> {
+  const draftToken = getDraftToken();
+  if (!draftToken) return false;
   const res = await fetch(`${API}/api/applications/current/documents`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-draft-token': draftToken },
     body: JSON.stringify(payload),
   });
   return res.ok;

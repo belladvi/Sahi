@@ -10,7 +10,7 @@ import {
   type OpsQueueItem,
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
-import { getStorage, purgeRawIdDocs } from '../lib/storage.js';
+import { CERTIFICATE_MAX_BYTES, getStorage, isValidStoredObject, purgeRawIdDocs } from '../lib/storage.js';
 import { redact } from '../lib/notifications.js';
 import { enqueueLicenceReadyTx, deliverLicenceReady } from '../lib/notification-workflow.js';
 import { requireRole } from '../middleware/auth.js';
@@ -154,7 +154,7 @@ opsRouter.post('/ops/applications/:id/transition', requireRole('ops', 'admin'), 
 opsRouter.post('/ops/applications/:id/certificate-upload-url', requireRole('ops', 'admin'), (req, res) => {
   const key = `applications/${String(req.params.id)}/certificate/${randomUUID()}.pdf`;
   const storage = getStorage();
-  res.status(201).json({ key, upload: storage.signUpload(key, 'application/pdf'), mock: storage.mock });
+  res.status(201).json({ key, upload: storage.signUpload(key, 'application/pdf', CERTIFICATE_MAX_BYTES), mock: storage.mock });
 });
 
 // Approve + publish (screen 18). Blocked until a valid 14-digit number AND a
@@ -180,6 +180,10 @@ opsRouter.post('/ops/applications/:id/publish', requireRole('ops', 'admin'), asy
       return;
     }
     const { fssaiNumber, certificateKey } = parsed.data;
+    if (!(await isValidStoredObject(id, 'certificate', certificateKey))) {
+      res.status(400).json({ error: 'Attach a valid certificate PDF for this application' });
+      return;
+    }
     const verifyToken = app.verifyToken ?? randomUUID();
     await prisma.$transaction(async (tx) => {
       await tx.application.update({

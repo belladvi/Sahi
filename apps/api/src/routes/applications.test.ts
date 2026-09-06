@@ -13,10 +13,12 @@ vi.mock('../auth.js', () => ({ auth: { api: { getSession } } }));
 
 const findUnique = vi.fn();
 const update = vi.fn();
+const updateMany = vi.fn();
 const findFirst = vi.fn();
 const paymentFindFirst = vi.fn();
 const paymentCreate = vi.fn();
-vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, findFirst }, payment: { findFirst: paymentFindFirst, create: paymentCreate } } }));
+const objectFindUnique = vi.fn();
+vi.mock('@sahi/db', () => ({ prisma: { application: { findUnique, update, updateMany, findFirst }, payment: { findFirst: paymentFindFirst, create: paymentCreate }, storedObject: { findUnique: objectFindUnique } } }));
 
 const { applicationsRouter } = await import('./applications.js');
 
@@ -47,6 +49,8 @@ describe('PATCH /api/applications/current — draft immutability', () => {
   beforeEach(() => {
     findUnique.mockReset();
     update.mockReset();
+    updateMany.mockReset();
+    objectFindUnique.mockReset();
   });
 
   it('updates an editable draft', async () => {
@@ -176,19 +180,95 @@ describe('POST /api/applications/current/documents', () => {
     getSession.mockReset();
     findFirst.mockReset();
     update.mockReset();
+    updateMany.mockReset();
+    objectFindUnique.mockReset();
   });
 
   it('saves masked Aadhaar + doc keys for the baker', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
-    findFirst.mockResolvedValue({ id: 'app1' });
-    update.mockResolvedValue({});
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+    objectFindUnique.mockResolvedValue({ key: 'applications/app1/photo/p.jpg', contentType: 'image/jpeg', size: 10, data: Buffer.from([0xff, 0xd8, 0xff]) });
+    updateMany.mockResolvedValue({ count: 1 });
     const res = await request(makeApp())
       .post('/api/applications/current/documents')
-      .send({ photoKey: 'applications/app1/photo/p', aadhaarMasked: 'XXXX XXXX 1234', applicantName: 'Riya' });
+      .set('x-draft-token', 't1')
+      .send({ photoKey: 'applications/app1/photo/p.jpg', aadhaarMasked: 'XXXX XXXX 1234', applicantName: 'Riya' });
     expect(res.status).toBe(200);
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ aadhaarMasked: 'XXXX XXXX 1234' }) }),
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'app1' }), data: expect.objectContaining({ aadhaarMasked: 'XXXX XXXX 1234' }) }),
     );
+  });
+
+  it('requires a draft token and scopes the mutation to its owned paid application', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+
+    expect((await request(makeApp()).post('/api/applications/current/documents').send({ applicantName: 'Riya' })).status).toBe(400);
+
+    updateMany.mockResolvedValue({ count: 1 });
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .set('x-draft-token', 'chosen-token')
+      .send({ applicantName: 'Riya' });
+    expect(res.status).toBe(200);
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { draftToken: 'chosen-token', bakerId: 'u1' },
+    }));
+  });
+
+  it('rejects document mutation after the selected application leaves paid', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'preparing' });
+
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .set('x-draft-token', 't1')
+      .send({ applicantName: 'Overwrite' });
+    expect(res.status).toBe(409);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document key outside the selected application', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+    objectFindUnique.mockResolvedValue({ key: 'applications/app2/photo/p.jpg', contentType: 'image/jpeg', size: 10 });
+
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .set('x-draft-token', 't1')
+      .send({ photoKey: 'applications/app2/photo/p.jpg' });
+
+    expect(res.status).toBe(400);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document key when the object does not exist', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+    objectFindUnique.mockResolvedValue(null);
+
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .set('x-draft-token', 't1')
+      .send({ photoKey: 'applications/app1/photo/missing.jpg' });
+
+    expect(res.status).toBe(400);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an object whose bytes do not match its stored MIME type', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+    objectFindUnique.mockResolvedValue({ key: 'applications/app1/photo/p.jpg', contentType: 'image/jpeg', size: 25, data: Buffer.from('<script>alert(1)</script>') });
+    updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await request(makeApp())
+      .post('/api/applications/current/documents')
+      .set('x-draft-token', 't1')
+      .send({ photoKey: 'applications/app1/photo/p.jpg' });
+
+    expect(res.status).toBe(400);
+    expect(updateMany).not.toHaveBeenCalled();
   });
 
   it('REJECTS a full (unmasked) Aadhaar number — 400, nothing stored', async () => {
@@ -226,6 +306,7 @@ describe('GET /api/applications/current/confirm', () => {
     });
     findFirst.mockResolvedValue({
       ...row,
+      status: 'paid',
       applicantName: 'Riya',
       residentialAddress: null,
       photoKey: null,
@@ -233,13 +314,22 @@ describe('GET /api/applications/current/confirm', () => {
       aadhaarMasked: null,
       formA: null,
     });
-    const res = await request(makeApp()).get('/api/applications/current/confirm');
+    const res = await request(makeApp()).get('/api/applications/current/confirm').set('x-draft-token', 't1');
     expect(res.status).toBe(200);
     expect(res.body.phone).toBe('+919812345678');
     expect(res.body.email).toBeNull(); // synthetic phone email is not surfaced
     expect(res.body.hygieneAccepted).toBe(false);
     // Hidden category mapping never leaks.
     expect(res.body).not.toHaveProperty('category');
+  });
+
+  it('requires a draft token and rejects confirm reads for a later-state application', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    expect((await request(makeApp()).get('/api/applications/current/confirm')).status).toBe(400);
+
+    findFirst.mockResolvedValue({ ...row, status: 'preparing' });
+    const res = await request(makeApp()).get('/api/applications/current/confirm').set('x-draft-token', 't1');
+    expect(res.status).toBe(409);
   });
 });
 
@@ -342,6 +432,7 @@ describe('POST /api/applications/current/form-a', () => {
     getSession.mockReset();
     findFirst.mockReset();
     update.mockReset();
+    updateMany.mockReset();
   });
 
   it('400 when the hygiene declaration is not accepted', async () => {
@@ -366,24 +457,39 @@ describe('POST /api/applications/current/form-a', () => {
 
   it('files Form-A and moves status to preparing (Ops files it to the government)', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
-    findFirst.mockResolvedValue({ id: 'app1' });
-    update.mockResolvedValue({ status: 'preparing' });
+    findFirst.mockResolvedValue({ id: 'app1', status: 'paid' });
+    updateMany.mockResolvedValue({ count: 1 });
     const res = await request(makeApp())
       .post('/api/applications/current/form-a')
+      .set('x-draft-token', 't1')
       .send({ applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210', hygieneAccepted: true });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, status: 'preparing' });
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'app1' }, data: expect.objectContaining({ status: 'preparing' }) }),
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'app1' }), data: expect.objectContaining({ status: 'preparing' }) }),
     );
     // Auditable confirmation event: the accepted declaration + a timestamp are
     // persisted with the filing (who = the application's baker; what/when here).
-    const persistedFormA = update.mock.calls[0]![0].data.formA as {
+    const persistedFormA = updateMany.mock.calls[0]![0].data.formA as {
       hygieneAccepted: boolean;
       submittedAt: string;
     };
     expect(persistedFormA.hygieneAccepted).toBe(true);
     expect(typeof persistedFormA.submittedAt).toBe('string');
+  });
+
+  it('requires a draft token and rejects filing a later-state application', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    const payload = { applicantName: 'Riya', businessName: 'Riya’s Kitchen', residentialAddress: 'Bengaluru', phone: '9876543210', hygieneAccepted: true };
+    expect((await request(makeApp()).post('/api/applications/current/form-a').send(payload)).status).toBe(400);
+
+    findFirst.mockResolvedValue({ id: 'app1', status: 'preparing' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/form-a')
+      .set('x-draft-token', 't1')
+      .send(payload);
+    expect(res.status).toBe(409);
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });
 

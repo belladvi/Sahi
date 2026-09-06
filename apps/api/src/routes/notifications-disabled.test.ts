@@ -16,12 +16,18 @@ const appUpdate = vi.fn(async () => ({ status: 'approved' }));
 const eventCreate = vi.fn();
 const notifUpsert = vi.fn();
 const deleteMany = vi.fn(async () => ({ count: 0 }));
+const certificateBytes = Buffer.from('%PDF-1.7 synthetic');
+const storedObjectFindUnique = vi.fn(async () => ({
+  contentType: 'application/pdf',
+  data: certificateBytes,
+  size: certificateBytes.length,
+}));
 vi.mock('@sahi/db', () => ({
   prisma: {
     application: { findUnique: appFindUnique, findFirst: appFindFirst, update: appUpdate },
     notification: { upsert: notifUpsert, findUnique: vi.fn(async () => null) },
     filingEvent: { create: eventCreate },
-    storedObject: { deleteMany },
+    storedObject: { deleteMany, findUnique: storedObjectFindUnique },
     $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
       cb({ application: { update: appUpdate }, filingEvent: { create: eventCreate } }),
     ),

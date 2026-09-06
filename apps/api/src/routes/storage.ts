@@ -3,30 +3,35 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '@sahi/db';
 import { requireAuth } from '../middleware/auth.js';
-import { getStorage, verifySignedUrl, stubGet, stubPut } from '../lib/storage.js';
+import {
+  DOCUMENT_MAX_BYTES,
+  getStorage,
+  hasExpectedMagic,
+  objectPolicy,
+  verifySignedUrl,
+  stubGet,
+  stubPut,
+} from '../lib/storage.js';
 
 export const storageRouter: Router = Router();
 
-const DOC_TYPES = ['photo', 'aadhaar', 'address'] as const;
+// Raw Aadhaar images never leave the browser; only the masked last four digits
+// are accepted by the application documents endpoint.
+const DOC_TYPES = ['photo', 'address'] as const;
 const uploadSchema = z.object({
   docType: z.enum(DOC_TYPES),
-  contentType: z.string().trim().min(1).max(100),
-  ext: z
-    .string()
-    .trim()
-    .regex(/^[a-z0-9]{1,5}$/i)
-    .optional(),
+  contentType: z.literal('image/jpeg'),
+  ext: z.literal('jpg'),
 });
 const downloadSchema = z.object({ key: z.string().trim().min(1).max(300) });
 
-/** The baker's application a document attaches to (their most recent one). */
-async function currentApplicationId(userId: string): Promise<string | null> {
+/** Resolve only the application named by this browser and owned by this baker. */
+async function selectedApplication(userId: string, draftToken: string): Promise<{ id: string; status: string } | null> {
   const app = await prisma.application.findFirst({
-    where: { bakerId: userId },
-    orderBy: { updatedAt: 'desc' },
-    select: { id: true },
+    where: { draftToken, bakerId: userId },
+    select: { id: true, status: true },
   });
-  return app?.id ?? null;
+  return app ?? null;
 }
 
 // Issue a signed upload URL scoped to the baker's application.
@@ -37,20 +42,30 @@ storageRouter.post('/storage/uploads', requireAuth(), async (req, res, next) => 
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
+    const draftToken = req.header('x-draft-token');
+    if (!draftToken) {
+      res.status(400).json({ error: 'Missing draft token' });
+      return;
+    }
     const parsed = uploadSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    const appId = await currentApplicationId(userId);
-    if (!appId) {
+    const application = await selectedApplication(userId, draftToken);
+    if (!application) {
       res.status(404).json({ error: 'No application' });
       return;
     }
+    if (application.status !== 'paid') {
+      res.status(409).json({ error: 'This application can no longer accept uploads', code: 'NOT_EDITABLE' });
+      return;
+    }
+    const appId = application.id;
     const { docType, contentType, ext } = parsed.data;
     const key = `applications/${appId}/${docType}/${randomUUID()}${ext ? `.${ext}` : ''}`;
     const storage = getStorage();
-    res.status(201).json({ key, upload: storage.signUpload(key, contentType), mock: storage.mock });
+    res.status(201).json({ key, upload: storage.signUpload(key, contentType, DOCUMENT_MAX_BYTES), mock: storage.mock });
   } catch (err) {
     next(err);
   }
@@ -77,9 +92,9 @@ storageRouter.post('/storage/downloads', requireAuth(), async (req, res, next) =
     }
     const owned = await prisma.application.findFirst({
       where: { id: keyAppId, bakerId: userId },
-      select: { id: true },
+      select: { photoKey: true, addressProofKey: true, certificateKey: true },
     });
-    if (!owned) {
+    if (!owned || ![owned.photoKey, owned.addressProofKey, owned.certificateKey].includes(parsed.data.key)) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
@@ -95,12 +110,32 @@ storageRouter.put('/storage/object', async (req: Request, res, next) => {
     const key = String(req.query.key ?? '');
     const exp = Number(req.query.exp);
     const sig = String(req.query.sig ?? '');
-    if (!verifySignedUrl('PUT', key, exp, sig)) {
+    const contentType = String(req.query.ct ?? '');
+    const maxBytes = Number(req.query.max);
+    const policy = objectPolicy(key);
+    if (
+      !policy ||
+      contentType !== policy.contentType ||
+      maxBytes !== policy.maxBytes ||
+      !verifySignedUrl('PUT', key, exp, sig, { contentType, maxBytes })
+    ) {
       res.status(403).json({ error: 'Invalid or expired signature' });
       return;
     }
     const data = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
-    const contentType = req.header('content-type') ?? 'application/octet-stream';
+    const requestType = (req.header('content-type') ?? '').split(';', 1)[0]?.trim().toLowerCase();
+    if (requestType !== contentType) {
+      res.status(400).json({ error: 'Content type does not match the signed upload' });
+      return;
+    }
+    if (data.length > maxBytes) {
+      res.status(413).json({ error: 'File is too large' });
+      return;
+    }
+    if (!hasExpectedMagic(contentType, data)) {
+      res.status(400).json({ error: 'File content does not match its type' });
+      return;
+    }
     await stubPut(key, contentType, data);
     res.status(200).json({ ok: true, size: data.length });
   } catch (err) {
@@ -124,6 +159,8 @@ storageRouter.get('/storage/object', async (req, res, next) => {
       return;
     }
     res.setHeader('Content-Type', obj.contentType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `attachment; filename="${key.split('/').pop() ?? 'download'}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.send(obj.data);
   } catch (err) {

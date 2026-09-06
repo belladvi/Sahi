@@ -114,7 +114,8 @@ const APPROVED = {
   certificateKey: 'applications/app1/certificate/c.pdf', businessName: 'Riya’s Kitchen',
   bakerId: 'u1', formA: { phone: '+919876543210' },
 };
-const CERT = { contentType: 'application/pdf', data: Buffer.from('%PDF demo') };
+const CERT_BYTES = Buffer.from('%PDF-1.7 synthetic');
+const CERT = { contentType: 'application/pdf', data: CERT_BYTES, size: CERT_BYTES.length };
 const ops = { user: { id: 'ops1', role: 'ops' } };
 
 /** Directly seed a durable queued row (as the approval tx would). */

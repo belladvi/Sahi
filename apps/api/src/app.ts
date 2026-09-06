@@ -16,8 +16,10 @@ import { demoRouter } from './routes/demo.js';
 import { opsRouter } from './routes/ops.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { verifyRouter } from './routes/verify.js';
+import { assertStorageConfigured } from './lib/storage.js';
 
 export function createApp(): Express {
+  assertStorageConfigured();
   const app = express();
 
   app.use(cors({ origin: process.env.CORS_ORIGIN ?? true, credentials: true }));
@@ -47,7 +49,7 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.use('/api', healthRouter);
-  app.use('/api', notesRouter);
+  if (process.env.NODE_ENV !== 'production') app.use('/api', notesRouter);
   app.use('/api', protectedRouter);
   app.use('/api', applicationsRouter);
   app.use('/api', accountRouter);

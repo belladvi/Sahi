@@ -89,10 +89,13 @@ export function FilingStatus() {
             <div className="mx-auto grid size-16 place-items-center rounded-full bg-action/15 text-2xl">
               ⏳
             </div>
-            <h1 className="mt-5 text-center text-2xl font-bold leading-tight">We’re handling it</h1>
+            <h1 className="mt-5 text-center text-2xl font-bold leading-tight">
+              {sent ? 'Your application is under review' : 'Ready for the demo Ops step'}
+            </h1>
             <p className="mx-auto mt-2 max-w-[32ch] text-center text-sm leading-relaxed text-copy-muted">
-              Government review usually takes about a week. You don’t need to do anything — we’ll
-              message you when your number is ready.
+              {sent
+                ? 'Government review can take about a week. Check here whenever you want the latest status.'
+                : 'Your details are ready. In this demo, the presenter completes the Ops step before your result appears here.'}
             </p>
 
             <div className="mt-8 space-y-0">
@@ -119,13 +122,13 @@ export function FilingStatus() {
             </div>
 
             <p className="mt-2 rounded-2xl border border-dashed border-line p-3 text-center text-xs leading-relaxed text-copy-muted">
-              Demo: there’s no live FoSCoS API — a teammate publishes the approved number from the Ops
-              Console, which flips this screen to live.
+              Demo only: no filing is sent to FoSCoS and no SMS or WhatsApp message is sent. A demo Ops
+              teammate publishes the synthetic result, then you can check it here.
             </p>
 
             <div className="mt-auto pt-6">
-              <PrimaryAction type="button" disabled>
-                Waiting for the government
+              <PrimaryAction type="button" onClick={reload} disabled={status === 'loading'}>
+                {status === 'loading' ? 'Checking status…' : 'Check status'}
               </PrimaryAction>
             </div>
           </>

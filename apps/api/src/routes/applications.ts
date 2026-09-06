@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import {
   draftUpdateSchema,
   documentsSchema,
@@ -21,7 +21,7 @@ import {
 } from '@sahi/shared';
 import { prisma } from '@sahi/db';
 import { mapCategory } from '../lib/category-engine.js';
-import { getStorage } from '../lib/storage.js';
+import { getStorage, isValidStoredObject } from '../lib/storage.js';
 import { getGateway, CURRENCY } from '../lib/payments.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -50,6 +50,41 @@ function toDraft(a: ApplicationRow): DraftApplication {
     businessName: a.businessName,
     description: a.description,
   };
+}
+
+/** Customer document/Form-A work is valid only for the exact browser-selected,
+ * owned application while it is in the paid preparation state. */
+async function selectedPaidApplication(
+  req: Request,
+  res: Response,
+  userId: string,
+) {
+  const draftToken = req.header(DRAFT_HEADER);
+  if (!draftToken) {
+    res.status(400).json({ error: 'Missing draft token' });
+    return null;
+  }
+  const application = await prisma.application.findFirst({
+    where: { draftToken, bakerId: userId },
+    select: {
+      id: true,
+      status: true,
+      applicantName: true,
+      businessName: true,
+      products: true,
+      residentialAddress: true,
+      formA: true,
+    },
+  });
+  if (!application) {
+    res.status(404).json({ error: 'No application' });
+    return null;
+  }
+  if (application.status !== 'paid') {
+    res.status(409).json({ error: 'This application can no longer be changed', code: 'NOT_EDITABLE' });
+    return null;
+  }
+  return application;
 }
 
 // Create a new anonymous draft. Returns the draftToken the client stores.
@@ -187,16 +222,24 @@ applicationsRouter.post('/applications/current/documents', requireAuth(), async 
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    const application = await prisma.application.findFirst({
-      where: { bakerId: userId },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true },
-    });
-    if (!application) {
-      res.status(404).json({ error: 'No application' });
+    const application = await selectedPaidApplication(req, res, userId);
+    if (!application) return;
+    if (parsed.data.photoKey && !(await isValidStoredObject(application.id, 'photo', parsed.data.photoKey))) {
+      res.status(400).json({ error: 'Invalid photo upload' });
       return;
     }
-    await prisma.application.update({ where: { id: application.id }, data: parsed.data });
+    if (parsed.data.addressProofKey && !(await isValidStoredObject(application.id, 'address', parsed.data.addressProofKey))) {
+      res.status(400).json({ error: 'Invalid address-proof upload' });
+      return;
+    }
+    const saved = await prisma.application.updateMany({
+      where: { id: application.id, bakerId: userId, draftToken: req.header(DRAFT_HEADER)!, status: 'paid' },
+      data: parsed.data,
+    });
+    if (saved.count !== 1) {
+      res.status(409).json({ error: 'Application state changed; refresh and try again', code: 'NOT_EDITABLE' });
+      return;
+    }
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -218,14 +261,8 @@ applicationsRouter.get('/applications/current/confirm', requireAuth(), async (re
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
-    const app = await prisma.application.findFirst({
-      where: { bakerId: userId },
-      orderBy: { updatedAt: 'desc' },
-    });
-    if (!app) {
-      res.status(404).json({ error: 'No application' });
-      return;
-    }
+    const app = await selectedPaidApplication(req, res, userId);
+    if (!app) return;
     const saved = (app.formA as { phone?: string; email?: string; hygieneAccepted?: boolean } | null) ?? null;
     const view: ConfirmView = {
       applicantName: app.applicantName,
@@ -257,18 +294,11 @@ applicationsRouter.post('/applications/current/form-a', requireAuth(), async (re
       res.status(400).json({ error: parsed.error.flatten() });
       return;
     }
-    const app = await prisma.application.findFirst({
-      where: { bakerId: userId },
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true },
-    });
-    if (!app) {
-      res.status(404).json({ error: 'No application' });
-      return;
-    }
+    const app = await selectedPaidApplication(req, res, userId);
+    if (!app) return;
     const { applicantName, businessName, residentialAddress, phone, email, hygieneAccepted } = parsed.data;
-    const updated = await prisma.application.update({
-      where: { id: app.id },
+    const updated = await prisma.application.updateMany({
+      where: { id: app.id, bakerId: userId, draftToken: req.header(DRAFT_HEADER)!, status: 'paid' },
       data: {
         applicantName,
         businessName,
@@ -278,9 +308,12 @@ applicationsRouter.post('/applications/current/form-a', requireAuth(), async (re
         status: 'preparing',
         formA: { phone, email: email ?? '', hygieneAccepted, submittedAt: new Date().toISOString() },
       },
-      select: { status: true },
     });
-    res.json({ ok: true, status: updated.status });
+    if (updated.count !== 1) {
+      res.status(409).json({ error: 'Application state changed; refresh and try again', code: 'NOT_EDITABLE' });
+      return;
+    }
+    res.json({ ok: true, status: 'preparing' });
   } catch (err) {
     next(err);
   }

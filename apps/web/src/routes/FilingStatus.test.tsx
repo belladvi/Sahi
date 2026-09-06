@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 
 const navigate = vi.fn();
 vi.mock('react-router', () => ({ useNavigate: () => navigate }));
@@ -24,13 +24,24 @@ describe('FilingStatus', () => {
   });
   afterEach(() => cleanup());
 
-  it('filed: shows the calm timeline and a disabled waiting action', async () => {
-    getFilingStatus.mockResolvedValue({ ...base, status: 'filed' });
+  it('filed: truthfully explains the demo and lets the baker check until Ops approval appears', async () => {
+    getFilingStatus
+      .mockResolvedValueOnce({ ...base, status: 'filed' })
+      .mockResolvedValueOnce({
+        ...base,
+        status: 'approved',
+        approvedAt: '2026-09-09T10:00:00.000Z',
+        fssaiNumber: '12345678901234',
+        certificateUrl: '/api/storage/object?key=cert&exp=1&sig=abc',
+      });
     render(<FilingStatus />);
-    await waitFor(() => expect(screen.getByText(/We’re handling it/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/application is under review/i)).toBeInTheDocument());
     expect(screen.getByText(/Under government review/i)).toBeInTheDocument();
-    const waiting = screen.getByRole('button', { name: /Waiting for the government/i });
-    expect(waiting).toBeDisabled();
+    expect(screen.getByText(/no SMS or WhatsApp message is sent/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Check status/i }));
+    await waitFor(() => expect(screen.getByText(/registration is live/i)).toBeInTheDocument());
+    expect(getFilingStatus).toHaveBeenCalledTimes(2);
   });
 
   it('approved: shows the FSSAI number and certificate download', async () => {

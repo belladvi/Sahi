@@ -13,11 +13,12 @@ const $transaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
   cb({ application: { update }, filingEvent: { create: eventCreate } }),
 );
 const deleteMany = vi.fn(async () => ({ count: 0 }));
+const objectFindUnique = vi.fn();
 vi.mock('@sahi/db', () => ({
   prisma: {
     application: { findMany, findUnique, update },
     filingEvent: { create: eventCreate },
-    storedObject: { deleteMany },
+    storedObject: { deleteMany, findUnique: objectFindUnique },
     $transaction,
   },
 }));
@@ -63,6 +64,7 @@ describe('Ops console', () => {
     update.mockReset();
     eventCreate.mockReset();
     $transaction.mockClear();
+    objectFindUnique.mockReset();
   });
 
   it('403 for a baker (role-gated)', async () => {
@@ -173,6 +175,7 @@ describe('Ops console', () => {
   it('publish approves: sets number, mints a verify token, audit-logs it', async () => {
     getSession.mockResolvedValue(ops);
     findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+    objectFindUnique.mockResolvedValue({ key: 'applications/app1/certificate/c.pdf', contentType: 'application/pdf', size: 100, data: Buffer.from('%PDF-1.7 synthetic') });
     update.mockResolvedValue({ status: 'approved' });
     const res = await request(makeApp())
       .post('/api/ops/applications/app1/publish')
@@ -187,5 +190,30 @@ describe('Ops console', () => {
       expect.objectContaining({ data: expect.objectContaining({ toStatus: 'approved' }) }),
     );
     expect(deleteMany).toHaveBeenCalled(); // retention purge ran
+  });
+
+  it('publish rejects a certificate key for another application', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '12345678901234', certificateKey: 'applications/app2/certificate/c.pdf' });
+
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('publish rejects a certificate key that does not exist', async () => {
+    getSession.mockResolvedValue(ops);
+    findUnique.mockResolvedValue({ id: 'app1', status: 'filed', verifyToken: null });
+    objectFindUnique.mockResolvedValue(null);
+
+    const res = await request(makeApp())
+      .post('/api/ops/applications/app1/publish')
+      .send({ fssaiNumber: '12345678901234', certificateKey: 'applications/app1/certificate/missing.pdf' });
+
+    expect(res.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
   });
 });

@@ -44,4 +44,16 @@ describe('notes API', () => {
     const res = await request(app).post('/api/notes').send({ text: '   ' });
     expect(res.status).toBe(400);
   });
+
+  it('does not mount the legacy Notes API in production', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const productionApp = createApp();
+      expect((await request(productionApp).get('/api/notes')).status).toBe(404);
+      expect((await request(productionApp).post('/api/notes').send({ text: 'blocked' })).status).toBe(404);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
 });
