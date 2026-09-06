@@ -4,6 +4,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import cors from 'cors';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
+import { resolveClientIp, CANONICAL_IP_HEADER } from './lib/client-ip.js';
 import { healthRouter } from './routes/health.js';
 import { notesRouter } from './routes/notes.js';
 import { protectedRouter } from './routes/protected.js';
@@ -24,8 +25,13 @@ export function createApp(): Express {
   // Better Auth handler must run BEFORE express.json() (it reads the raw body).
   // Path-guard middleware avoids Express 5 wildcard-route syntax pitfalls.
   const authHandler = toNodeHandler(auth);
+  const clientIpSourceHeader = (process.env.CLIENT_IP_HEADER ?? 'x-forwarded-for').toLowerCase();
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/auth/')) {
+      // Never trust an inbound copy of our canonical header — we set it ourselves.
+      delete req.headers[CANONICAL_IP_HEADER];
+      const clientIp = resolveClientIp(req.headers[clientIpSourceHeader]);
+      if (clientIp) req.headers[CANONICAL_IP_HEADER] = clientIp;
       void authHandler(req, res);
       return;
     }

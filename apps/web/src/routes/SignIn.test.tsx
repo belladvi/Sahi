@@ -13,6 +13,8 @@ vi.mock('../lib/auth-client', () => ({
 }));
 const accountExists = vi.fn();
 vi.mock('../lib/account', () => ({ accountExists: (...args: unknown[]) => accountExists(...args) }));
+const fetchDemoOtp = vi.fn();
+vi.mock('../lib/demo-otp', () => ({ fetchDemoOtp: (...args: unknown[]) => fetchDemoOtp(...args) }));
 
 const { SignIn } = await import('./SignIn');
 
@@ -33,6 +35,7 @@ describe('SignIn', () => {
     sendOtp.mockReset();
     verify.mockReset();
     accountExists.mockReset();
+    fetchDemoOtp.mockReset();
   });
   afterEach(() => cleanup());
 
@@ -62,5 +65,19 @@ describe('SignIn', () => {
     fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
     await waitFor(() => expect(screen.getByText(/couldn’t find an account/i)).toBeInTheDocument());
     expect(sendOtp).not.toHaveBeenCalled();
+  });
+
+  it('demo mode: auto-fills the code and states nothing was sent (no false delivery claim)', async () => {
+    accountExists.mockResolvedValue(true);
+    sendOtp.mockResolvedValue({ error: null });
+    fetchDemoOtp.mockResolvedValue('246800');
+    renderScreen();
+    fireEvent.change(screen.getByPlaceholderText('98765 43210'), { target: { value: '9898989898' } });
+    fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
+    await waitFor(() =>
+      expect(screen.getByText('Demo code filled in — no SMS or email was sent.')).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText('6-digit code')).toHaveValue('246800');
+    expect(screen.queryByText(/we sent a 6-digit code/i)).not.toBeInTheDocument();
   });
 });

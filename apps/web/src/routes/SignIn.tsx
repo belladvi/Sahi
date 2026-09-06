@@ -49,11 +49,12 @@ export function SignIn() {
       }
       setCode('');
       setPhase('code');
-      // Demo mode: no real SMS/email is wired yet, so auto-fill the code.
+      // Demo mode: the case-study demo contacts have no real SMS/email delivery,
+      // so the allowlisted code is auto-filled here. Nothing is actually sent.
       const demo = await fetchDemoOtp(value());
       if (demo) {
         setCode(demo);
-        setDemoNote(`Demo mode — code ${demo} auto-filled (real SMS/email isn’t wired yet).`);
+        setDemoNote('Demo code filled in — no SMS or email was sent.');
       }
     } catch {
       setError('Network error. Please try again.');
@@ -170,9 +171,13 @@ export function SignIn() {
           </>
         ) : (
           <>
-            <p className="text-sm text-copy-muted">
-              We sent a 6-digit code to <span className="text-copy">{value()}</span>. Enter it below.
-            </p>
+            {demoNote ? (
+              <p className="text-sm text-copy-muted">Enter the 6-digit code below.</p>
+            ) : (
+              <p className="text-sm text-copy-muted">
+                We sent a 6-digit code to <span className="text-copy">{value()}</span>. Enter it below.
+              </p>
+            )}
 
             <input
               value={code}

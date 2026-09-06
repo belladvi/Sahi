@@ -2,26 +2,19 @@ import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { emailOTP, phoneNumber } from 'better-auth/plugins';
 import { prisma } from '@sahi/db';
+import { deliverOtp } from './lib/auth-delivery.js';
+import { CANONICAL_IP_HEADER } from './lib/client-ip.js';
 
 /**
  * Better Auth: phone + email OTP, sessions in Postgres (via Prisma).
- * Ticket 03 uses MOCK senders (log the code); the real SMS provider is ticket 27.
  *
- * DEMO REVEAL: while senders are mocks (no real SMS/email is wired), no code can
- * reach a phone/inbox. To keep the flow testable/demoable we remember the last
- * mock code per contact so the UI can auto-fill it. This is a demo shortcut and
- * a takeover vector — it is gated by OTP_DEMO_REVEAL and MUST be off (and the
- * store left unpopulated) once real senders land in ticket 27.
+ * OTP delivery is governed by AUTH_DELIVERY_MODE (see lib/auth-delivery.ts):
+ *  - `demo`     — the code is remembered for allowlisted demo contacts so the UI
+ *                 can auto-fill it; NO SMS/email is sent. Verification is unchanged.
+ *  - `provider` — real delivery. No vendor is wired in R0, so `deliverOtp` throws
+ *                 (fail closed). Real adapters are Ticket 27B (provider-blocked).
+ * Neither sender ever logs the contact or the OTP.
  */
-export const otpDemoRevealEnabled = process.env.OTP_DEMO_REVEAL !== 'false';
-
-const demoOtpStore = new Map<string, string>();
-
-/** Return (and consume) the last mock OTP issued to a contact, demo mode only. */
-export function peekDemoOtp(contact: string): string | null {
-  if (!otpDemoRevealEnabled) return null;
-  return demoOtpStore.get(contact) ?? null;
-}
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secret: process.env.BETTER_AUTH_SECRET ?? 'dev-insecure-secret-change-me',
@@ -31,6 +24,15 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: { type: 'string', defaultValue: 'baker', input: false },
+    },
+  },
+  // Per-client rate limiting keys off the IP we resolve ourselves and place in a
+  // canonical header (see lib/client-ip.ts + app.ts). Better Auth reads ONLY that
+  // header, never a raw caller-supplied forwarding header, so spoofing can't shift
+  // a bucket and two real clients never share one.
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: [CANONICAL_IP_HEADER],
     },
   },
   // Force rate limiting on (Better Auth only enables it in prod by default).
@@ -47,9 +49,8 @@ export const auth = betterAuth({
     emailOTP({
       otpLength: 6,
       expiresIn: 300,
-      async sendVerificationOTP({ email, otp, type }) {
-        console.log(`[mock-email] OTP for ${email} (${type}): ${otp}`);
-        if (otpDemoRevealEnabled) demoOtpStore.set(email.trim().toLowerCase(), otp);
+      async sendVerificationOTP({ email, otp }) {
+        deliverOtp('email', email, otp);
       },
     }),
     phoneNumber({
@@ -59,8 +60,7 @@ export const auth = betterAuth({
         getTempEmail: (phone) => `${phone}@phone.sahi.local`,
       },
       async sendOTP({ phoneNumber: phone, code }) {
-        console.log(`[mock-sms] OTP for ${phone}: ${code}`);
-        if (otpDemoRevealEnabled) demoOtpStore.set(phone, code);
+        deliverOtp('phone', phone, code);
       },
     }),
   ],

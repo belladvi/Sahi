@@ -1,14 +1,16 @@
 import { Router } from 'express';
-import { otpDemoRevealEnabled, peekDemoOtp } from '../auth.js';
+import { getAuthDeliveryMode, peekDemoOtp } from '../lib/auth-delivery.js';
 
 export const demoRouter: Router = Router();
 
-// DEMO ONLY. Reveals the last mock OTP for a contact so the UI can auto-fill it
-// while no real SMS/email provider is wired. This is a takeover vector — it 404s
-// unless OTP_DEMO_REVEAL is on, and MUST stay off once real senders land
-// (ticket 27). See apps/api/src/auth.ts.
+// DEMO ONLY. Reveals the last demo OTP for an ALLOWLISTED, non-personal demo
+// contact so the UI can auto-fill it — no real SMS/email is ever sent. It exists
+// only when AUTH_DELIVERY_MODE=demo (the confirmed case-study environment), and
+// returns a uniform { code: null } for any contact that is not on the allowlist,
+// so an arbitrary caller can never retrieve or enumerate an OTP. See
+// apps/api/src/lib/auth-delivery.ts.
 demoRouter.get('/demo/otp', (req, res) => {
-  if (!otpDemoRevealEnabled) {
+  if (getAuthDeliveryMode() !== 'demo') {
     res.status(404).json({ error: 'Not found' });
     return;
   }
@@ -17,7 +19,6 @@ demoRouter.get('/demo/otp', (req, res) => {
     res.status(400).json({ error: 'contact required' });
     return;
   }
-  // Email is stored lowercased; phone is stored as-is (already E.164 from the client).
-  const code = peekDemoOtp(contact) ?? peekDemoOtp(contact.toLowerCase());
-  res.json({ code: code ?? null });
+  // peekDemoOtp enforces demo-mode + allowlist + expiry; non-allowlisted -> null.
+  res.json({ code: peekDemoOtp(contact) ?? null });
 });
