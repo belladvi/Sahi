@@ -14,7 +14,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="relative h-dvh w-full max-w-md overflow-hidden bg-app sm:h-[844px] sm:max-h-[calc(100dvh-3rem)] sm:w-[390px] sm:rounded-[2.75rem] sm:border-[10px] sm:border-black sm:shadow-2xl sm:ring-1 sm:ring-white/10">
         {/* Notch — desktop bezel only */}
         <div className="pointer-events-none absolute left-1/2 top-0 z-10 hidden h-6 w-36 -translate-x-1/2 rounded-b-2xl bg-black sm:block" />
-        <div className="flex h-full flex-col overflow-y-auto text-copy">{children}</div>
+        {/* `safe-top`/`safe-bottom` reserve the device safe areas so the notch
+            never overlaps the first header row and sticky bottom actions clear
+            the home indicator (see index.css). */}
+        <main className="safe-top safe-bottom flex h-full flex-col overflow-y-auto text-copy">{children}</main>
       </div>
     </div>
   );

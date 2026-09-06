@@ -1,6 +1,8 @@
 @import 'tailwindcss';
+@import './styles/motion.css';
 
-/* Sahi brand tokens — ported from the mockup (dark navy + yellow). */
+/* Sahi brand tokens — dark navy + yellow (kept; see Decisions 2026-09-06).
+ * Premium comes from hierarchy, spacing, depth and feedback, not a palette flip. */
 @theme {
   --color-canvas: #f4f2ed;
   --color-app: #07171f;
@@ -13,6 +15,13 @@
   --color-verified: #42d38d;
   --color-verified-foreground: #062719;
   --color-danger: #ff6b5e;
+
+  /* Motion tokens (D0) — used by transitions/animations; collapsed by
+   * prefers-reduced-motion in styles/motion.css. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }
 
 @layer base {
@@ -30,5 +39,30 @@
     color: var(--color-copy);
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* App-wide visible keyboard focus (D0). Complements per-control focus rings;
+   * ensures every interactive element has a clear focus indicator. */
+  :focus-visible {
+    outline: 2px solid var(--color-action);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Device safe areas (D0). On a real phone these use env() insets; inside the
+   * desktop phone frame we reserve a fixed band so the decorative notch never
+   * overlaps the first header row. */
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  @media (min-width: 640px) {
+    .safe-top {
+      padding-top: 2.5rem;
+    }
   }
 }

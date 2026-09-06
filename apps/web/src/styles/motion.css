@@ -1,0 +1,15 @@
+/* Reduced-motion foundation (D0).
+ *
+ * When the viewer asks the OS to reduce motion, collapse every animation and
+ * transition to an instant change so the FINAL state is still shown — nothing
+ * is hidden, only the movement is removed. Applies app-wide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
