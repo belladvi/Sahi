@@ -65,10 +65,10 @@ describe('POST /api/payments/order', () => {
     expect(res.status).toBe(401);
   });
 
-  it('404 when the baker has no draft application', async () => {
+  it('404 when the baker has no application under this token', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     appFindFirst.mockResolvedValue(null);
-    const res = await request(createApp()).post('/api/payments/order');
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok1');
     expect(res.status).toBe(404);
   });
 
@@ -77,7 +77,7 @@ describe('POST /api/payments/order', () => {
     appFindFirst.mockResolvedValue({ id: 'app1', status: 'draft' });
     payFindFirst.mockResolvedValue(null); // no unpaid order yet
     payCreate.mockResolvedValue({});
-    const res = await request(createApp()).post('/api/payments/order');
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok1');
     expect(res.status).toBe(201);
     expect(res.body.amount).toBe(AMOUNT_PAISE);
     expect(res.body.mock).toBe(true);
@@ -91,7 +91,7 @@ describe('POST /api/payments/order', () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     appFindFirst.mockResolvedValue({ id: 'app1', status: 'draft' });
     payFindFirst.mockResolvedValue({ orderId: 'order_existing_1', status: 'created' });
-    const res = await request(createApp()).post('/api/payments/order');
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok1');
     expect(res.status).toBe(200);
     expect(res.body.orderId).toBe('order_existing_1');
     expect(payCreate).not.toHaveBeenCalled(); // no duplicate order row
@@ -101,10 +101,50 @@ describe('POST /api/payments/order', () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     // No payable draft, but the baker has a paid application.
     appFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'app1', status: 'paid' });
-    const res = await request(createApp()).post('/api/payments/order');
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok1');
     expect(res.status).toBe(200);
     expect(res.body.alreadyPaid).toBe(true);
     expect(res.body.nextRoute).toBe('/upload');
+    expect(payCreate).not.toHaveBeenCalled();
+  });
+
+  // R1.5 token-scope P0: order creation must pay the application named by the
+  // browser's current draft token, never the newest owned draft. Once that token
+  // app is paid, Back/retry resumes it — it must NOT fall through to a different
+  // owned draft and open a second order/payment.
+  it('resumes the token-selected paid app and never pays a different owned draft (token-scope P0)', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    appFindFirst.mockImplementation((args?: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      if (where.draftToken === 'tok-paid') {
+        // Correct, token-scoped lookups.
+        if (where.status === 'draft') return Promise.resolve(null); // the token app is paid, not a draft
+        return Promise.resolve({ id: 'appPaid', status: 'paid', bakerId: 'u1', draftToken: 'tok-paid' });
+      }
+      // Buggy, owner-only lookups would find a DIFFERENT older owned draft.
+      if (where.status === 'draft') return Promise.resolve({ id: 'appOtherDraft', status: 'draft', bakerId: 'u1', draftToken: 'tok-other-draft' });
+      return Promise.resolve({ id: 'appPaid', status: 'paid', bakerId: 'u1', draftToken: 'tok-paid' });
+    });
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok-paid');
+    expect(res.status).toBe(200);
+    expect(res.body.alreadyPaid).toBe(true);
+    expect(res.body.nextRoute).toBe('/upload');
+    expect(payCreate).not.toHaveBeenCalled(); // never charges the other owned draft
+  });
+
+  it('never authorizes an application the token does not own, even when the caller has another draft', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    appFindFirst.mockImplementation((args?: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      // Token-scoped by {draftToken, bakerId}: the token belongs to another baker,
+      // so no application the caller owns matches — nothing is payable.
+      if (where.draftToken === 'tok-other-baker') return Promise.resolve(null);
+      // Owner-only lookup (buggy) would find the caller's unrelated own draft.
+      if (where.status === 'draft') return Promise.resolve({ id: 'appMine', status: 'draft', bakerId: 'u1', draftToken: 'tok-mine' });
+      return Promise.resolve(null);
+    });
+    const res = await request(createApp()).post('/api/payments/order').set('x-draft-token', 'tok-other-baker');
+    expect(res.status).toBe(404);
     expect(payCreate).not.toHaveBeenCalled();
   });
 });

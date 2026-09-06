@@ -1,3 +1,5 @@
+import { getDraftToken } from './draft';
+
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export interface OrderInfo {
@@ -13,9 +15,14 @@ export interface OrderInfo {
 export type OrderResult = OrderInfo | { kind: 'resume'; nextRoute: string };
 
 /** Create a Razorpay order for the signed-in baker's draft.
+ * Sends the browser's current draft token so the server pays exactly THAT
+ * application (never the newest owned draft) — a repeat/Back journey can't open
+ * an order for a different owned draft.
  * 401 → 'unauthenticated'; 404 → 'no-application' (recoverable copy on screen). */
 export async function createOrder(): Promise<OrderResult> {
-  const res = await fetch(`${API}/api/payments/order`, { method: 'POST', credentials: 'include' });
+  const token = getDraftToken();
+  const headers: Record<string, string> = token ? { 'x-draft-token': token } : {};
+  const res = await fetch(`${API}/api/payments/order`, { method: 'POST', credentials: 'include', headers });
   if (res.status === 401) throw new Error('unauthenticated');
   if (res.status === 404) throw new Error('no-application');
   if (!res.ok) throw new Error('order failed');

@@ -18,16 +18,24 @@ paymentsRouter.post('/payments/order', requireAuth(), async (req, res, next) => 
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
+    // The application to pay is the one named by the browser's current draft
+    // token AND owned by this baker — never merely "the newest owned draft".
+    // One account can hold several drafts; without this scope, Back/retry after
+    // paying could select and pay a different older owned draft.
+    const draftToken = req.header('x-draft-token');
+    if (!draftToken) {
+      res.status(404).json({ error: 'No application to pay for' });
+      return;
+    }
     const application = await prisma.application.findFirst({
-      where: { bakerId: userId, status: 'draft' },
-      orderBy: { updatedAt: 'desc' },
+      where: { draftToken, bakerId: userId, status: 'draft' },
     });
     if (!application) {
-      // No payable draft. If the baker already has a paid/later application,
-      // resume it instead of erroring — refresh/Back/retry never dead-ends.
+      // No payable draft under this token. If the SAME token-selected application
+      // (owned by this baker) is already paid/later, resume it — refresh/Back/retry
+      // never dead-ends and never falls through to a different owned draft.
       const settled = await prisma.application.findFirst({
-        where: { bakerId: userId, status: { in: PAID_OR_LATER } },
-        orderBy: { updatedAt: 'desc' },
+        where: { draftToken, bakerId: userId, status: { in: PAID_OR_LATER } },
       });
       if (settled) {
         res.status(200).json({ alreadyPaid: true, nextRoute: nextRouteForStatus(settled.status) });
