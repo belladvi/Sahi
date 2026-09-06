@@ -1,13 +1,11 @@
 import type { ConfirmView, FormAInput } from '@sahi/shared';
+import { apiGet } from './http';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
 
 /** Pre-filled confirm view for the signed-in baker (screen 8). */
-export async function getConfirmView(): Promise<ConfirmView | null> {
-  const res = await fetch(`${API}/api/applications/current/confirm`, {
-    credentials: 'include',
-  });
-  return res.ok ? ((await res.json()) as ConfirmView) : null;
+export function getConfirmView(signal?: AbortSignal): Promise<ConfirmView | null> {
+  return apiGet<ConfirmView>('/api/applications/current/confirm', { signal });
 }
 
 export interface FormAResult {

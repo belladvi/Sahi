@@ -1,4 +1,5 @@
 import type { RenewalStatus } from '@sahi/shared';
+import { apiGet } from './http';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -8,9 +9,8 @@ export interface RenewalView extends RenewalStatus {
   total: number;
 }
 
-export async function getRenewal(): Promise<RenewalView | null> {
-  const res = await fetch(`${API}/api/applications/current/renewal`, { credentials: 'include' });
-  return res.ok ? ((await res.json()) as RenewalView) : null;
+export function getRenewal(signal?: AbortSignal): Promise<RenewalView | null> {
+  return apiGet<RenewalView>('/api/applications/current/renewal', { signal });
 }
 
 export interface RenewResult {

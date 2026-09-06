@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { hasFiled, sentToGovernment, type FilingStatusView } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getFilingStatus } from '../lib/filing';
+import { useLoader } from '../lib/useLoader';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '';
@@ -24,32 +25,30 @@ interface Milestone {
 
 export function FilingStatus() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<FilingStatusView | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const v = await getFilingStatus();
-      if (!alive) return;
-      if (!v) {
-        navigate('/sign-in');
-        return;
-      }
-      if (!hasFiled(v.status)) {
-        // Hasn't filed yet — send her back to finish confirming.
-        navigate('/confirm');
-        return;
-      }
-      setView(v);
-      setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
+  const { status, data: view, reload } = useLoader<FilingStatusView | null>(async (signal) => {
+    const v = await getFilingStatus(signal);
+    if (signal.aborted) return null;
+    if (!v) {
+      navigate('/sign-in');
+      return null;
+    }
+    if (!hasFiled(v.status)) {
+      // Hasn't filed yet — send her back to finish confirming.
+      navigate('/confirm');
+      return null;
+    }
+    return v;
   }, [navigate]);
 
-  if (loading || !view) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Your application" />
+        <LoadError onRetry={reload} onHome={() => navigate('/')} />
+      </AppShell>
+    );
+  }
+  if (!view) {
     return (
       <AppShell>
         <AppHeader title="Your application" />

@@ -1,4 +1,5 @@
 import type { DraftApplication, DraftUpdate } from '@sahi/shared';
+import { apiGet } from './http';
 
 const KEY = 'sahi_draft_token';
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -34,13 +35,13 @@ export async function ensureDraft(): Promise<string> {
   return data.draftToken;
 }
 
-export async function getDraft(): Promise<DraftApplication | null> {
+export function getDraft(signal?: AbortSignal): Promise<DraftApplication | null> {
   const token = getDraftToken();
-  if (!token) return null;
-  const res = await fetch(`${API}/api/applications/current`, {
+  if (!token) return Promise.resolve(null);
+  return apiGet<DraftApplication>('/api/applications/current', {
     headers: { 'x-draft-token': token },
+    signal,
   });
-  return res.ok ? ((await res.json()) as DraftApplication) : null;
 }
 
 export async function updateDraft(update: DraftUpdate): Promise<DraftApplication> {

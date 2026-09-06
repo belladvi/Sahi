@@ -64,4 +64,19 @@ describe('OpsApplication — Screen 19 entry link', () => {
     await waitFor(() => expect(screen.getByText('Published · live')).toBeInTheDocument());
     expect(screen.queryByText(/View notification/)).not.toBeInTheDocument();
   });
+
+  it('renders main content even when the optional notification probe fails', async () => {
+    getOpsApplication.mockResolvedValue(approvedApp);
+    getOpsNotification.mockResolvedValue({ kind: 'error' }); // probe failed
+    render(<OpsApplication />);
+    await waitFor(() => expect(screen.getByText('Published · live')).toBeInTheDocument());
+    expect(screen.queryByText(/View notification/)).not.toBeInTheDocument();
+  });
+
+  it('shows a recoverable error (not a permanent spinner) when the load fails', async () => {
+    getOpsApplication.mockRejectedValue(new Error('5xx'));
+    render(<OpsApplication />);
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
 });

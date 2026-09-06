@@ -5,8 +5,10 @@ import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getOpsApplication, transitionApplication, uploadCertificate, publishApplication } from '../lib/ops';
 import { getOpsNotification } from '../lib/notifications';
+import { useLoader } from '../lib/useLoader';
 
 const ACTION_LABEL: Record<string, string> = {
   filed: 'Mark filed to FoSCoS',
@@ -26,8 +28,10 @@ function Row({ label, value }: { label: string; value: string | null }) {
 export function OpsApplication() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [app, setApp] = useState<OpsApplicationDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { status, data: app, reload } = useLoader<OpsApplicationDetail | null>(
+    (signal) => getOpsApplication(id, signal),
+    [id],
+  );
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,21 +42,20 @@ export function OpsApplication() {
   const [certName, setCertName] = useState<string | null>(null);
   const [certBusy, setCertBusy] = useState(false);
   // Screen 19 entry link — shown only when a demo notification exists (endpoint
-  // 200). It 404s before approval and while the feature is off, so this stays
-  // hidden in exactly those cases. Re-probed on load so it appears after publish.
+  // 200). This probe is OPTIONAL and non-blocking: the application renders its
+  // main content regardless. It re-runs whenever the app reloads (e.g. after
+  // publish), so the link appears once a notification exists. Never throws.
   const [hasNotification, setHasNotification] = useState(false);
-
-  async function load() {
-    const a = await getOpsApplication(id);
-    setApp(a);
-    const notif = await getOpsNotification(id);
-    setHasNotification(notif.kind === 'ok');
-    setLoading(false);
-  }
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    if (!app) return;
+    let alive = true;
+    void getOpsNotification(id).then((notif) => {
+      if (alive) setHasNotification(notif.kind === 'ok');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id, app]);
 
   async function move(to: FilingStatus) {
     setBusy(true);
@@ -64,10 +67,18 @@ export function OpsApplication() {
       return;
     }
     setNote('');
-    await load();
+    reload();
   }
 
-  if (loading) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Application" onBack={() => navigate('/ops')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/ops')} />
+      </AppShell>
+    );
+  }
+  if (status === 'loading') {
     return (
       <AppShell>
         <AppHeader title="Application" onBack={() => navigate('/ops')} />
@@ -119,7 +130,7 @@ export function OpsApplication() {
       setError(res.error ?? 'Could not publish.');
       return;
     }
-    await load();
+    reload();
   }
 
   return (

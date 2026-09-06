@@ -1,18 +1,16 @@
 import type { OpsApplicationDetail, OpsQueueItem, OpsTransition } from '@sahi/shared';
+import { apiGet } from './http';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? '';
 
-export async function getOpsQueue(status?: string): Promise<OpsQueueItem[]> {
+export async function getOpsQueue(status?: string, signal?: AbortSignal): Promise<OpsQueueItem[]> {
   const qs = status ? `?status=${encodeURIComponent(status)}` : '';
-  const res = await fetch(`${API}/api/ops/applications${qs}`, { credentials: 'include' });
-  if (!res.ok) return [];
-  const body = (await res.json()) as { applications: OpsQueueItem[] };
-  return body.applications;
+  const body = await apiGet<{ applications: OpsQueueItem[] }>(`/api/ops/applications${qs}`, { signal });
+  return body?.applications ?? [];
 }
 
-export async function getOpsApplication(id: string): Promise<OpsApplicationDetail | null> {
-  const res = await fetch(`${API}/api/ops/applications/${id}`, { credentials: 'include' });
-  return res.ok ? ((await res.json()) as OpsApplicationDetail) : null;
+export function getOpsApplication(id: string, signal?: AbortSignal): Promise<OpsApplicationDetail | null> {
+  return apiGet<OpsApplicationDetail>(`/api/ops/applications/${id}`, { signal });
 }
 
 export interface TransitionResult {

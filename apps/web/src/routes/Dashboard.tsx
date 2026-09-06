@@ -3,44 +3,53 @@ import { useNavigate } from 'react-router';
 import type { FilingStatusView } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
+import { LoadError } from '../components/LoadError';
 import { getFilingStatus } from '../lib/filing';
 import { getMyNotification } from '../lib/notifications';
+import { useLoader } from '../lib/useLoader';
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<FilingStatusView | null>(null);
-  // Screen 19 entry link — shown only when a demo notification actually exists
-  // (endpoint 200). It 404s both before approval and while the feature is off,
-  // so this stays hidden in exactly those cases.
-  const [hasNotification, setHasNotification] = useState(false);
+  const { status, data: view, reload } = useLoader<FilingStatusView | null>(async (signal) => {
+    const v = await getFilingStatus(signal);
+    if (signal.aborted) return null;
+    if (!v) {
+      navigate('/sign-in');
+      return null;
+    }
+    if (v.status !== 'approved') {
+      // Only a licensed baker gets the dashboard; otherwise show status.
+      navigate('/status');
+      return null;
+    }
+    return v;
+  }, [navigate]);
 
+  // Screen 19 entry link — shown only when a demo notification actually exists
+  // (endpoint 200). This probe is OPTIONAL and non-blocking: the dashboard
+  // renders its main content regardless, and the link simply stays hidden if the
+  // probe fails or 404s. getMyNotification never throws.
+  const [hasNotification, setHasNotification] = useState(false);
   useEffect(() => {
+    if (!view) return;
     let alive = true;
-    (async () => {
-      const v = await getFilingStatus();
-      if (!alive) return;
-      if (!v) {
-        navigate('/sign-in');
-        return;
-      }
-      if (v.status !== 'approved') {
-        // Only a licensed baker gets the dashboard; otherwise show status.
-        navigate('/status');
-        return;
-      }
-      setView(v);
-      const notif = await getMyNotification();
-      if (!alive) return;
-      setHasNotification(notif.kind === 'ok');
-      setLoading(false);
-    })();
+    void getMyNotification().then((notif) => {
+      if (alive) setHasNotification(notif.kind === 'ok');
+    });
     return () => {
       alive = false;
     };
-  }, [navigate]);
+  }, [view]);
 
-  if (loading || !view) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Home" />
+        <LoadError onRetry={reload} onHome={() => navigate('/')} />
+      </AppShell>
+    );
+  }
+  if (!view) {
     return (
       <AppShell>
         <AppHeader title="Home" />

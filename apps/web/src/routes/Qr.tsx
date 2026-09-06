@@ -3,37 +3,57 @@ import { useNavigate } from 'react-router';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getFilingStatus } from '../lib/filing';
+import { useLoader } from '../lib/useLoader';
 import { renderQrDataUrl, verifyUrl } from '../lib/qr';
 
 export function Qr() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState('');
+  const { status, data, reload } = useLoader<{ token: string } | null>(async (signal) => {
+    const v = await getFilingStatus(signal);
+    if (signal.aborted) return null;
+    if (!v) {
+      navigate('/sign-in');
+      return null;
+    }
+    if (v.status !== 'approved' || !v.verifyToken) {
+      navigate('/status');
+      return null;
+    }
+    return { token: v.verifyToken };
+  }, [navigate]);
+  const token = data?.token ?? '';
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // QR generation is a separate, lazy step — a render hiccup shows inline,
+  // it doesn't fail the whole screen (the filing load owns the error state).
   useEffect(() => {
+    if (!token) return;
     let alive = true;
     (async () => {
-      const v = await getFilingStatus();
-      if (!alive) return;
-      if (!v) return navigate('/sign-in');
-      if (v.status !== 'approved' || !v.verifyToken) return navigate('/status');
-      setToken(v.verifyToken);
       try {
-        const url = await renderQrDataUrl(verifyUrl(v.verifyToken));
+        const url = await renderQrDataUrl(verifyUrl(token));
         if (alive) setDataUrl(url);
       } catch {
         if (alive) setMsg('Couldn’t generate the QR — please try again.');
       }
-      if (alive) setLoading(false);
     })();
     return () => {
       alive = false;
     };
-  }, [navigate]);
+  }, [token]);
+
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Your QR code" onBack={() => navigate('/dashboard')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/dashboard')} />
+      </AppShell>
+    );
+  }
 
   function download() {
     if (!dataUrl) return;
@@ -78,7 +98,7 @@ export function Qr() {
 
         <div className="rounded-3xl bg-action/10 p-6">
           <div className="mx-auto w-56 rounded-2xl bg-white p-4">
-            {loading || !dataUrl ? (
+            {!dataUrl ? (
               <div className="grid aspect-square place-items-center text-sm text-copy-muted">
                 {msg ?? 'Generating…'}
               </div>
@@ -88,7 +108,7 @@ export function Qr() {
           </div>
         </div>
 
-        {msg && !loading && <p className="text-xs text-copy-muted">{msg}</p>}
+        {msg && dataUrl && <p className="text-xs text-copy-muted">{msg}</p>}
 
         <button
           type="button"

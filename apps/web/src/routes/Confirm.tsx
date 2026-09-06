@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import type { ConfirmView } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getConfirmView, fileFormA } from '../lib/confirm';
+import { useLoader } from '../lib/useLoader';
 
 function Field({
   label,
@@ -35,8 +38,10 @@ function Field({
 
 export function Confirm() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [needsAuth, setNeedsAuth] = useState(false);
+  const { status, data, reload } = useLoader<ConfirmView | null>((signal) => getConfirmView(signal), []);
+  // A 4xx (unauthenticated) resolves to null → sign-in prompt; a network/timeout/
+  // 5xx throws → recoverable error state (not a permanent spinner).
+  const needsAuth = status === 'ready' && data === null;
   const [products, setProducts] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [business, setBusiness] = useState('');
@@ -50,28 +55,16 @@ export function Confirm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Seed the editable fields once the pre-filled view loads.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const view = await getConfirmView();
-      if (!alive) return;
-      if (!view) {
-        setNeedsAuth(true);
-        setLoading(false);
-        return;
-      }
-      setProducts(view.products);
-      setName(view.applicantName ?? '');
-      setBusiness(view.businessName ?? '');
-      setAddress(view.residentialAddress ?? '');
-      setPhone(view.phone ?? '');
-      setEmail(view.email ?? '');
-      setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    if (!data) return;
+    setProducts(data.products);
+    setName(data.applicantName ?? '');
+    setBusiness(data.businessName ?? '');
+    setAddress(data.residentialAddress ?? '');
+    setPhone(data.phone ?? '');
+    setEmail(data.email ?? '');
+  }, [data]);
 
   const canFile =
     name.trim() && business.trim() && address.trim() && phone.trim().length >= 8 && hygiene;
@@ -110,7 +103,9 @@ export function Confirm() {
     <AppShell>
       <AppHeader title="Confirm details" onBack={() => navigate('/upload')} />
       <div className="flex flex-1 flex-col gap-5 p-6">
-        {loading ? (
+        {status === 'error' ? (
+          <LoadError onRetry={reload} onHome={() => navigate('/')} />
+        ) : status === 'loading' ? (
           <p className="text-sm text-copy-muted">Loading your details…</p>
         ) : needsAuth ? (
           <>

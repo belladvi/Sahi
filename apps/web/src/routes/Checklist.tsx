@@ -1,36 +1,35 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { documentChecklist, type DocItem, type Premises } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { Surface } from '../components/ui/Surface';
+import { LoadError } from '../components/LoadError';
 import { getDraft } from '../lib/draft';
+import { useLoader } from '../lib/useLoader';
 
 export function Checklist() {
   const navigate = useNavigate();
-  const [premises, setPremises] = useState<Premises | null>(null);
-  const [items, setItems] = useState<DocItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    void getDraft().then((d) => {
-      if (!d) {
-        navigate('/eligibility');
-        return;
-      }
-      const p = d.premises ?? 'own';
-      setPremises(p);
-      setItems(documentChecklist(p));
-      setLoading(false);
-    });
+  const { status, data, reload } = useLoader<{ premises: Premises; items: DocItem[] } | null>(async (signal) => {
+    const d = await getDraft(signal);
+    if (signal.aborted) return null;
+    if (!d) {
+      navigate('/eligibility');
+      return null;
+    }
+    const premises = d.premises ?? 'own';
+    return { premises, items: documentChecklist(premises) };
   }, [navigate]);
+  const premises = data?.premises;
+  const items = data?.items ?? [];
 
   return (
     <AppShell>
       <AppHeader title="What you’ll need" onBack={() => navigate('/describe')} />
       <div className="flex flex-1 flex-col gap-5 p-6">
-        {loading ? (
+        {status === 'error' ? (
+          <LoadError onRetry={reload} onHome={() => navigate('/')} />
+        ) : !data ? (
           <p className="text-copy-muted">Loading…</p>
         ) : (
           <>

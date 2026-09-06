@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, type RouteObject } from 'react-router';
 import { Landing } from './routes/Landing';
 import { Eligibility } from './routes/Eligibility';
 import { Describe } from './routes/Describe';
@@ -18,8 +18,11 @@ import { OpsHome } from './routes/OpsHome';
 import { OpsApplication } from './routes/OpsApplication';
 import { Notification } from './routes/Notification';
 import { RequireRole } from './components/RequireRole';
+import { NotFound } from './components/NotFound';
+import { RouteError } from './components/RouteError';
 
-export const router = createBrowserRouter([
+/** Client route table. Exported so tests can mount it in a memory router. */
+export const routes: RouteObject[] = [
   { path: '/', element: <Landing /> },
   { path: '/eligibility', element: <Eligibility /> },
   { path: '/describe', element: <Describe /> },
@@ -60,4 +63,14 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
   },
+  // Branded catch-all for unknown client routes (never matches /verify/* or
+  // /api/*, which the Express server owns and renders before the SPA).
+  { path: '*', element: <NotFound /> },
+];
+
+export const router = createBrowserRouter([
+  // A pathless root wraps every route with one branded error boundary, so a
+  // thrown render error (or a no-match 404 that reaches the root) shows a
+  // recoverable page instead of React Router's raw developer screen.
+  { errorElement: <RouteError />, children: routes },
 ]);

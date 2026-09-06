@@ -1,37 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getFilingStatus } from '../lib/filing';
+import { useLoader } from '../lib/useLoader';
 import { renderBadge, type BadgeFormat } from '../lib/badge';
 
 const FORMATS: BadgeFormat[] = ['Post', 'Story', 'DP'];
 
 export function Badge() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [fssai, setFssai] = useState('');
+  const { status, data, reload } = useLoader<{ name: string; fssai: string } | null>(async (signal) => {
+    const v = await getFilingStatus(signal);
+    if (signal.aborted) return null;
+    if (!v) {
+      navigate('/sign-in');
+      return null;
+    }
+    if (v.status !== 'approved') {
+      navigate('/status');
+      return null;
+    }
+    return { name: v.businessName ?? 'Your business', fssai: v.fssaiNumber ?? '' };
+  }, [navigate]);
+  const name = data?.name ?? '';
+  const fssai = data?.fssai ?? '';
   const [format, setFormat] = useState<BadgeFormat>('Post');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const v = await getFilingStatus();
-      if (!alive) return;
-      if (!v) return navigate('/sign-in');
-      if (v.status !== 'approved') return navigate('/status');
-      setName(v.businessName ?? 'Your business');
-      setFssai(v.fssaiNumber ?? '');
-      setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [navigate]);
 
   async function download() {
     setBusy(true);
@@ -73,7 +71,15 @@ export function Badge() {
     }
   }
 
-  if (loading) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Verified badge" onBack={() => navigate('/dashboard')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/dashboard')} />
+      </AppShell>
+    );
+  }
+  if (!data) {
     return (
       <AppShell>
         <AppHeader title="Verified badge" onBack={() => navigate('/dashboard')} />

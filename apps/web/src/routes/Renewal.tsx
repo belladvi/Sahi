@@ -4,7 +4,9 @@ import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import { LoadError } from '../components/LoadError';
 import { getRenewal, renew, type RenewalView } from '../lib/renewal';
+import { useLoader } from '../lib/useLoader';
 
 function formatDate(iso: string): string {
   try {
@@ -16,25 +18,24 @@ function formatDate(iso: string): string {
 
 export function Renewal() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const { status, data, reload } = useLoader<RenewalView | null>(async (signal) => {
+    const v = await getRenewal(signal);
+    if (signal.aborted) return null;
+    if (!v) {
+      navigate('/status');
+      return null;
+    }
+    return v;
+  }, [navigate]);
   const [view, setView] = useState<RenewalView | null>(null);
   const [busy, setBusy] = useState(false);
   const [justRenewed, setJustRenewed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Seed the editable view from the load; the renew action updates it in place.
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      const v = await getRenewal();
-      if (!alive) return;
-      if (!v) return navigate('/status');
-      setView(v);
-      setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [navigate]);
+    if (data) setView(data);
+  }, [data]);
 
   async function pay() {
     setBusy(true);
@@ -49,7 +50,15 @@ export function Renewal() {
     setJustRenewed(!!res.renewed);
   }
 
-  if (loading || !view) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Stay active" onBack={() => navigate('/dashboard')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/dashboard')} />
+      </AppShell>
+    );
+  }
+  if (!view) {
     return (
       <AppShell>
         <AppHeader title="Stay active" onBack={() => navigate('/dashboard')} />

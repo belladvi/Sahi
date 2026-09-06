@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { FilingStatus, OpsQueueItem } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
+import { LoadError } from '../components/LoadError';
 import { getOpsQueue } from '../lib/ops';
+import { useLoader } from '../lib/useLoader';
 
 const FILTERS: { key: FilingStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -23,21 +25,11 @@ const STATUS_LABEL: Record<string, string> = {
 export function OpsHome() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilingStatus | 'all'>('all');
-  const [items, setItems] = useState<OpsQueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    getOpsQueue(filter === 'all' ? undefined : filter).then((rows) => {
-      if (!alive) return;
-      setItems(rows);
-      setLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [filter]);
+  const { status, data, reload } = useLoader<OpsQueueItem[]>(
+    (signal) => getOpsQueue(filter === 'all' ? undefined : filter, signal),
+    [filter],
+  );
+  const items = data ?? [];
 
   return (
     <AppShell>
@@ -58,7 +50,9 @@ export function OpsHome() {
           ))}
         </div>
 
-        {loading ? (
+        {status === 'error' ? (
+          <LoadError onRetry={reload} onHome={() => navigate('/ops')} />
+        ) : status === 'loading' ? (
           <p className="text-sm text-copy-muted">Loading queue…</p>
         ) : items.length === 0 ? (
           <Surface>

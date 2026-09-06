@@ -1,31 +1,33 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type { TrustScore as TrustScoreData } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { Surface } from '../components/ui/Surface';
+import { LoadError } from '../components/LoadError';
 import { getTrustScore } from '../lib/trust';
+import { useLoader } from '../lib/useLoader';
 
 export function TrustScore() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<TrustScoreData | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const d = await getTrustScore();
-      if (!alive) return;
-      if (!d) return navigate('/sign-in');
-      setData(d);
-      setLoading(false);
-    })();
-    return () => {
-      alive = false;
-    };
+  const { status, data, reload } = useLoader<TrustScoreData | null>(async (signal) => {
+    const d = await getTrustScore(signal);
+    if (signal.aborted) return null;
+    if (!d) {
+      navigate('/sign-in');
+      return null;
+    }
+    return d;
   }, [navigate]);
 
-  if (loading || !data) {
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="Trust Score" onBack={() => navigate('/dashboard')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/dashboard')} />
+      </AppShell>
+    );
+  }
+  if (!data) {
     return (
       <AppShell>
         <AppHeader title="Trust Score" onBack={() => navigate('/dashboard')} />

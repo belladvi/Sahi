@@ -64,4 +64,30 @@ describe('Dashboard', () => {
     await waitFor(() => expect(screen.getByText(/You’re verified/i)).toBeInTheDocument());
     expect(screen.queryByText('View message preview')).not.toBeInTheDocument();
   });
+
+  it('renders the main content even when the optional notification probe fails', async () => {
+    getFilingStatus.mockResolvedValue(approved);
+    getMyNotification.mockResolvedValue({ kind: 'error' }); // probe failed
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText(/You’re verified/i)).toBeInTheDocument());
+    expect(screen.getByText('12345678901234')).toBeInTheDocument();
+    expect(screen.queryByText('View message preview')).not.toBeInTheDocument();
+  });
+
+  it('shows a recoverable error (not a permanent spinner) when the load fails, and retries', async () => {
+    getFilingStatus.mockRejectedValueOnce(new Error('network down'));
+    render(<Dashboard />);
+    const retry = await screen.findByRole('button', { name: /try again/i });
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    // Retry succeeds → content renders.
+    getFilingStatus.mockResolvedValue(approved);
+    retry.click();
+    await waitFor(() => expect(screen.getByText(/You’re verified/i)).toBeInTheDocument());
+  });
+
+  it('redirects to /sign-in when unauthenticated (load returns null)', async () => {
+    getFilingStatus.mockResolvedValue(null);
+    render(<Dashboard />);
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/sign-in'));
+  });
 });
