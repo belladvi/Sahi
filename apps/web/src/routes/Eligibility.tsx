@@ -6,68 +6,75 @@ import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { Surface } from '../components/ui/Surface';
 import { updateDraft } from '../lib/draft';
+import QualifyMakeStep, { type MakeOption } from '../features/qualify/QualifyMakeStep';
 
-const PRODUCT_CHIPS = ['Cakes', 'Cookies', 'Brownies', 'Chocolates', 'Tiffin / meals', 'Pickles', 'Snacks'];
+// Step-1 chips. Labels are what we persist to the draft (products[]) and feed the
+// server-side category engine — kept identical to the previous fixed chip list so
+// the hidden category mapping is unchanged. Custom entries add their own labels.
+const MAKE_OPTIONS: MakeOption[] = [
+  { id: 'cakes', label: 'Cakes' },
+  { id: 'cookies', label: 'Cookies' },
+  { id: 'brownies', label: 'Brownies' },
+  { id: 'chocolates', label: 'Chocolates' },
+  { id: 'tiffin', label: 'Tiffin / meals' },
+  { id: 'pickles', label: 'Pickles' },
+  { id: 'snacks', label: 'Snacks' },
+];
 
 export function Eligibility() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [products, setProducts] = useState<string[]>([]);
+  const [makeSelection, setMakeSelection] = useState<MakeOption[]>([]);
   const [premises, setPremises] = useState<Premises | null>(null);
   const [turnoverBand, setTurnoverBand] = useState<TurnoverBand | null>(null);
   const [saving, setSaving] = useState(false);
 
   const result = turnoverBand ? evaluateEligibility(turnoverBand) : null;
 
-  function toggleProduct(p: string) {
-    setProducts((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
-  }
-
   async function finish() {
     if (!premises || !turnoverBand) return;
     setSaving(true);
     try {
-      await updateDraft({ products, premises, turnoverBand });
+      await updateDraft({ products: makeSelection.map((o) => o.label), premises, turnoverBand });
       navigate('/describe');
     } finally {
       setSaving(false);
     }
   }
 
+  // Step 1 (index 0) — premium "What do you make?". It's a self-contained screen
+  // with its own header + progress, so it renders directly in the shell without
+  // AppHeader (exactly like the Landing hero). Selection is lifted here so going
+  // Back from step 2 restores the chips (customs included). Nothing is saved to
+  // the draft until `finish()`, preserving the original single-write flow.
+  if (step === 0) {
+    const customOptions = makeSelection.filter((o) => o.custom);
+    return (
+      <AppShell>
+        <QualifyMakeStep
+          step={1}
+          totalSteps={4}
+          options={[...MAKE_OPTIONS, ...customOptions]}
+          initialSelected={makeSelection.map((o) => o.id)}
+          onBack={() => navigate('/')}
+          onNext={(selected) => {
+            setMakeSelection(selected);
+            setStep(1);
+          }}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
-      <AppHeader title="Do you qualify?" onBack={() => (step === 0 ? navigate('/') : setStep(step - 1))} />
+      <AppHeader title="Do you qualify?" onBack={() => setStep(step - 1)} />
       <div className="flex flex-1 flex-col p-6">
         <div className="mb-6 flex gap-1.5" aria-label={`Step ${step + 1} of 4`}>
           {[0, 1, 2, 3].map((i) => (
             <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-action' : 'bg-line'}`} />
           ))}
         </div>
-
-        {step === 0 && (
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold">What do you make?</h2>
-            <div className="flex flex-wrap gap-2">
-              {PRODUCT_CHIPS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => toggleProduct(p)}
-                  className={`rounded-full px-4 py-2 text-sm ring-1 ${
-                    products.includes(p)
-                      ? 'bg-action text-action-foreground ring-action'
-                      : 'text-copy-muted ring-line'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            <PrimaryAction type="button" disabled={products.length === 0} onClick={() => setStep(1)}>
-              Next
-            </PrimaryAction>
-          </section>
-        )}
 
         {step === 1 && (
           <section className="space-y-4">
