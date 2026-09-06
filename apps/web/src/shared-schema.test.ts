@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createNoteSchema, maskAadhaar, isMaskedAadhaar, documentsSchema, computeTrustScore, renewalCohort, renewalStatus } from '@sahi/shared';
+import { createNoteSchema, maskAadhaar, isMaskedAadhaar, documentsSchema, computeTrustScore, renewalCohort, renewalStatus, nextRouteForStatus } from '@sahi/shared';
 
 // The web app validates with the SAME schema module the API uses on the server.
 describe('createNoteSchema (shared, used client-side)', () => {
@@ -49,6 +49,28 @@ describe('Trust Score (shared scoring rules)', () => {
   it('licence active alone is the biggest single factor (40)', () => {
     const { score } = computeTrustScore({ licenceActive: true, feeCurrent: false, documentsVerified: false, emailOnFile: false });
     expect(score).toBe(40);
+  });
+});
+
+// The single source of truth for "given an application's real state, where does
+// the connected journey resume?" — used post-OTP so we never route blindly to /pay.
+describe('nextRouteForStatus (shared resume routing)', () => {
+  it('a draft goes to Payment', () => {
+    expect(nextRouteForStatus('draft')).toBe('/pay');
+  });
+
+  it('a paid application resumes at Upload (never back to Payment)', () => {
+    expect(nextRouteForStatus('paid')).toBe('/upload');
+  });
+
+  it('preparing/filed/gov_query resume at Filing Status', () => {
+    expect(nextRouteForStatus('preparing')).toBe('/status');
+    expect(nextRouteForStatus('filed')).toBe('/status');
+    expect(nextRouteForStatus('gov_query')).toBe('/status');
+  });
+
+  it('an approved licence resumes at the Dashboard', () => {
+    expect(nextRouteForStatus('approved')).toBe('/dashboard');
   });
 });
 

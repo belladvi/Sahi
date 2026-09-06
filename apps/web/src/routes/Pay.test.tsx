@@ -45,4 +45,37 @@ describe('Pay', () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/create-account'));
     expect(mockPay).not.toHaveBeenCalled();
   });
+
+  it('offers accessible UPI and Card demo choices with the no-charge label', () => {
+    render(<Pay />);
+    expect(screen.getByRole('radio', { name: /upi/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /card/i })).toBeInTheDocument();
+    expect(screen.getByText(/demo payment — no money will be charged/i)).toBeInTheDocument();
+  });
+
+  it('paying by Card still drives the deterministic mock gateway to /upload', async () => {
+    createOrder.mockResolvedValue({ orderId: 'order_mock_2', amount: 59900, currency: 'INR', keyId: 'rzp_test_mock', mock: true });
+    mockPay.mockResolvedValue(true);
+    render(<Pay />);
+    fireEvent.click(screen.getByRole('radio', { name: /card/i }));
+    fireEvent.click(screen.getByRole('button', { name: /pay ₹599/i }));
+    await waitFor(() => expect(mockPay).toHaveBeenCalledWith('order_mock_2'));
+    expect(navigate).toHaveBeenCalledWith('/upload');
+  });
+
+  it('an already-paid application resumes at its route without charging again', async () => {
+    createOrder.mockResolvedValue({ kind: 'resume', nextRoute: '/upload' });
+    render(<Pay />);
+    fireEvent.click(screen.getByRole('button', { name: /pay ₹599/i }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/upload'));
+    expect(mockPay).not.toHaveBeenCalled();
+  });
+
+  it('a missing/stale application shows recoverable copy, not the generic error', async () => {
+    createOrder.mockRejectedValue(new Error('no-application'));
+    render(<Pay />);
+    fireEvent.click(screen.getByRole('button', { name: /pay ₹599/i }));
+    await waitFor(() => expect(screen.getByText(/start a new registration|couldn’t find/i)).toBeInTheDocument());
+    expect(mockPay).not.toHaveBeenCalled();
+  });
 });

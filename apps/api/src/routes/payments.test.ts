@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
+
+// The case-study environment runs the deterministic demo gateway (fail-closed
+// mode). Set it before the payments lib resolves the gateway.
+process.env.PAYMENT_MODE = 'demo';
+
 import { hmacSha256Hex, verifySignature, AMOUNT_PAISE } from '../lib/payments.js';
 
 // Hermetic: mock the session + DB. The mock payment gateway is deterministic
@@ -10,6 +15,7 @@ vi.mock('../auth.js', () => ({ auth: { api: { getSession } } }));
 const appFindFirst = vi.fn();
 const appUpdateMany = vi.fn();
 const payCreate = vi.fn();
+const payFindFirst = vi.fn();
 const payFindUnique = vi.fn();
 const payUpdate = vi.fn();
 vi.mock('@sahi/db', () => ({
@@ -17,6 +23,7 @@ vi.mock('@sahi/db', () => ({
     application: { findFirst: (...a: unknown[]) => appFindFirst(...a), updateMany: (...a: unknown[]) => appUpdateMany(...a) },
     payment: {
       create: (...a: unknown[]) => payCreate(...a),
+      findFirst: (...a: unknown[]) => payFindFirst(...a),
       findUnique: (...a: unknown[]) => payFindUnique(...a),
       update: (...a: unknown[]) => payUpdate(...a),
     },
@@ -48,6 +55,7 @@ describe('POST /api/payments/order', () => {
   beforeEach(() => {
     getSession.mockReset();
     appFindFirst.mockReset();
+    payFindFirst.mockReset();
     payCreate.mockReset();
   });
 
@@ -67,6 +75,7 @@ describe('POST /api/payments/order', () => {
   it('creates an order + payment row for the draft (mock gateway)', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     appFindFirst.mockResolvedValue({ id: 'app1', status: 'draft' });
+    payFindFirst.mockResolvedValue(null); // no unpaid order yet
     payCreate.mockResolvedValue({});
     const res = await request(createApp()).post('/api/payments/order');
     expect(res.status).toBe(201);
@@ -76,6 +85,27 @@ describe('POST /api/payments/order', () => {
     expect(payCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ applicationId: 'app1', status: 'created' }) }),
     );
+  });
+
+  it('reuses the existing unpaid order instead of creating a duplicate (double-click/refresh/Back safe)', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    appFindFirst.mockResolvedValue({ id: 'app1', status: 'draft' });
+    payFindFirst.mockResolvedValue({ orderId: 'order_existing_1', status: 'created' });
+    const res = await request(createApp()).post('/api/payments/order');
+    expect(res.status).toBe(200);
+    expect(res.body.orderId).toBe('order_existing_1');
+    expect(payCreate).not.toHaveBeenCalled(); // no duplicate order row
+  });
+
+  it('an already-paid application resumes at Upload instead of erroring (no duplicate paid transition)', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    // No payable draft, but the baker has a paid application.
+    appFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'app1', status: 'paid' });
+    const res = await request(createApp()).post('/api/payments/order');
+    expect(res.status).toBe(200);
+    expect(res.body.alreadyPaid).toBe(true);
+    expect(res.body.nextRoute).toBe('/upload');
+    expect(payCreate).not.toHaveBeenCalled();
   });
 });
 

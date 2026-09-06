@@ -1,4 +1,5 @@
 import type { DraftApplication, DraftUpdate } from '@sahi/shared';
+import { nextRouteForStatus } from '@sahi/shared';
 import { apiGet } from './http';
 
 const KEY = 'sahi_draft_token';
@@ -20,14 +21,21 @@ function setDraftToken(token: string) {
   }
 }
 
-/** Ensure a server-side draft exists; returns its token. */
+/** Ensure a server-side DRAFT exists; returns its token. If the stored token
+ * points at a paid/later application, that record is left untouched and a fresh
+ * anonymous draft is minted — a deliberate new eligibility journey never
+ * overwrites or resets prior applications. */
 export async function ensureDraft(): Promise<string> {
   const existing = getDraftToken();
   if (existing) {
     const res = await fetch(`${API}/api/applications/current`, {
       headers: { 'x-draft-token': existing },
     });
-    if (res.ok) return existing;
+    if (res.ok) {
+      const app = (await res.json()) as { status?: string };
+      if (app.status === 'draft') return existing;
+      // else: stale non-draft token — fall through and start a fresh draft.
+    }
   }
   const res = await fetch(`${API}/api/applications`, { method: 'POST' });
   const data = (await res.json()) as { draftToken: string };
@@ -54,18 +62,35 @@ export async function updateDraft(update: DraftUpdate): Promise<DraftApplication
   return (await res.json()) as DraftApplication;
 }
 
+/** The result of claiming the anonymous draft after OTP. `nextRoute` is the
+ * server-derived route for the application's ACTUAL state, so the caller never
+ * routes blindly to Payment. A conflict means the token points at a paid/later
+ * record that isn't a fresh claim — the caller must not open Payment. */
+export type ClaimResult =
+  | { ok: true; status: string; nextRoute: string }
+  | { ok: false; reason: 'no-token' | 'conflict' | 'error' };
+
 /**
  * Attach the anonymous draft to the just-created baker account (server sets
- * `bakerId` from the session). Requires an authenticated session cookie.
- * No-ops if there's no local draft. Returns true on success/idempotent claim.
+ * `bakerId` from the session) and report where the journey resumes. Requires an
+ * authenticated session cookie.
  */
-export async function claimDraft(): Promise<boolean> {
+export async function claimDraft(): Promise<ClaimResult> {
   const token = getDraftToken();
-  if (!token) return false;
-  const res = await fetch(`${API}/api/applications/current/claim`, {
-    method: 'POST',
-    headers: { 'x-draft-token': token },
-    credentials: 'include',
-  });
-  return res.ok;
+  if (!token) return { ok: false, reason: 'no-token' };
+  try {
+    const res = await fetch(`${API}/api/applications/current/claim`, {
+      method: 'POST',
+      headers: { 'x-draft-token': token },
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { status: string; nextRoute?: string };
+      return { ok: true, status: data.status, nextRoute: data.nextRoute ?? nextRouteForStatus(data.status) };
+    }
+    if (res.status === 409) return { ok: false, reason: 'conflict' };
+    return { ok: false, reason: 'error' };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
 }

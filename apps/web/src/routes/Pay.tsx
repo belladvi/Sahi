@@ -7,6 +7,8 @@ import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { Surface } from '../components/ui/Surface';
 import { createOrder, mockPay, type OrderInfo } from '../lib/payments';
 
+type PayMethod = 'upi' | 'card';
+
 interface RazorpayOptions {
   key: string;
   order_id: string;
@@ -45,6 +47,7 @@ export function Pay() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [method, setMethod] = useState<PayMethod>('upi');
 
   async function openRealCheckout(order: OrderInfo) {
     const ready = await loadRazorpay();
@@ -72,6 +75,11 @@ export function Pay() {
     setError(null);
     try {
       const order = await createOrder();
+      // Already paid/later — resume the journey instead of charging again.
+      if ('kind' in order) {
+        navigate(order.nextRoute);
+        return;
+      }
       if (order.mock) {
         const ok = await mockPay(order.orderId);
         if (!ok) throw new Error('mock pay failed');
@@ -80,8 +88,14 @@ export function Pay() {
       }
       await openRealCheckout(order);
     } catch (err) {
-      if (err instanceof Error && err.message === 'unauthenticated') {
+      const message = err instanceof Error ? err.message : '';
+      if (message === 'unauthenticated') {
         navigate('/create-account');
+        return;
+      }
+      if (message === 'no-application') {
+        setError('We couldn’t find an application to pay for. Start a new registration to continue.');
+        setBusy(false);
         return;
       }
       setError('Payment couldn’t start. Your details are saved — please try again.');
@@ -128,6 +142,38 @@ export function Pay() {
             a query, we fix it free.
           </p>
         </div>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold text-copy">Pay with</legend>
+          <div role="radiogroup" aria-label="Payment method" className="flex gap-2">
+            {(
+              [
+                { key: 'upi', label: 'UPI' },
+                { key: 'card', label: 'Card' },
+              ] as const
+            ).map((m) => (
+              <label
+                key={m.key}
+                className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ring-1 transition ${
+                  method === m.key ? 'bg-action text-action-foreground ring-action' : 'bg-app-raised text-copy-muted ring-line'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="pay-method"
+                  value={m.key}
+                  checked={method === m.key}
+                  onChange={() => setMethod(m.key)}
+                  className="sr-only"
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+          <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
+            Demo payment — no money will be charged.
+          </p>
+        </fieldset>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 

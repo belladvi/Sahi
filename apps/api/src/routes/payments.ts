@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request } from 'express';
 import { prisma } from '@sahi/db';
+import { nextRouteForStatus } from '@sahi/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { AMOUNT_PAISE, CURRENCY, getGateway, hmacSha256Hex, verifySignature } from '../lib/payments.js';
 
 export const paymentsRouter: Router = Router();
+
+/** Paid or any later state — an application that must NOT be charged again. */
+const PAID_OR_LATER = ['paid', 'preparing', 'filed', 'gov_query', 'approved'];
 
 // Create a Razorpay order for the signed-in baker's draft application.
 paymentsRouter.post('/payments/order', requireAuth(), async (req, res, next) => {
@@ -19,11 +23,39 @@ paymentsRouter.post('/payments/order', requireAuth(), async (req, res, next) => 
       orderBy: { updatedAt: 'desc' },
     });
     if (!application) {
+      // No payable draft. If the baker already has a paid/later application,
+      // resume it instead of erroring — refresh/Back/retry never dead-ends.
+      const settled = await prisma.application.findFirst({
+        where: { bakerId: userId, status: { in: PAID_OR_LATER } },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (settled) {
+        res.status(200).json({ alreadyPaid: true, nextRoute: nextRouteForStatus(settled.status) });
+        return;
+      }
       res.status(404).json({ error: 'No application to pay for' });
       return;
     }
 
     const gateway = getGateway();
+
+    // Idempotent order creation: reuse an existing unpaid order for this draft
+    // so double-click / refresh / Back cannot create duplicate orders.
+    const existingOrder = await prisma.payment.findFirst({
+      where: { applicationId: application.id, status: 'created' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingOrder) {
+      res.status(200).json({
+        orderId: existingOrder.orderId,
+        amount: AMOUNT_PAISE,
+        currency: CURRENCY,
+        keyId: gateway.keyId,
+        mock: gateway.mock,
+      });
+      return;
+    }
+
     const order = await gateway.createOrder({
       amount: AMOUNT_PAISE,
       currency: CURRENCY,

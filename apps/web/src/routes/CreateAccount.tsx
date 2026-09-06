@@ -66,9 +66,25 @@ export function CreateAccount() {
         setError(res.error.message ?? 'That code was wrong or expired. Send a new one.');
         return;
       }
-      // Session established — carry the anonymous draft over, then pay.
-      await claimDraft();
-      navigate('/pay');
+      // Session established — carry the anonymous draft over and route by its
+      // ACTUAL state. Never open Payment blindly: a fresh draft goes to /pay, a
+      // paid/later application resumes at its own route, a conflict stays put.
+      const claim = await claimDraft();
+      if (claim.ok) {
+        navigate(claim.nextRoute);
+        return;
+      }
+      if (claim.reason === 'conflict') {
+        setError(
+          'This registration couldn’t be continued — it may already be paid or in progress. Sign in to see its status.',
+        );
+        return;
+      }
+      if (claim.reason === 'no-token') {
+        navigate('/pay');
+        return;
+      }
+      setError('Network error. Please try again.');
     } catch {
       setError('Network error. Please try again.');
     } finally {

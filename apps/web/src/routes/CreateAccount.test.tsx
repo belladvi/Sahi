@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+
+const navigate = vi.fn();
+vi.mock('react-router', () => ({ useNavigate: () => navigate }));
 
 const sendOtp = vi.fn();
 const verify = vi.fn();
@@ -11,22 +13,25 @@ vi.mock('../lib/auth-client', () => ({
     signIn: { emailOtp: vi.fn() },
   },
 }));
-vi.mock('../lib/draft', () => ({ claimDraft: vi.fn().mockResolvedValue(true) }));
+const claimDraft = vi.fn();
+vi.mock('../lib/draft', () => ({ claimDraft: (...a: unknown[]) => claimDraft(...a) }));
 const fetchDemoOtp = vi.fn();
 vi.mock('../lib/demo-otp', () => ({ fetchDemoOtp: (...args: unknown[]) => fetchDemoOtp(...args) }));
 
 const { CreateAccount } = await import('./CreateAccount');
 
 function renderScreen() {
-  const router = createMemoryRouter(
-    [
-      { path: '/create-account', element: <CreateAccount /> },
-      { path: '/pay', element: <div>Pay screen</div> },
-      { path: '/sign-in', element: <div>Sign in screen</div> },
-    ],
-    { initialEntries: ['/create-account'] },
-  );
-  return render(<RouterProvider router={router} />);
+  return render(<CreateAccount />);
+}
+
+// Get from the contact step to a verifiable OTP step with the code pre-filled.
+async function reachVerify() {
+  sendOtp.mockResolvedValue({ error: null });
+  fetchDemoOtp.mockResolvedValue('135790');
+  verify.mockResolvedValue({ error: null });
+  fireEvent.change(screen.getByPlaceholderText('98765 43210'), { target: { value: '9876543210' } });
+  fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
+  await waitFor(() => expect(screen.getByLabelText('6-digit code')).toHaveValue('135790'));
 }
 
 describe('CreateAccount', () => {
@@ -34,6 +39,8 @@ describe('CreateAccount', () => {
     sendOtp.mockReset();
     verify.mockReset();
     fetchDemoOtp.mockReset();
+    claimDraft.mockReset();
+    navigate.mockReset();
   });
   afterEach(() => cleanup());
 
@@ -74,5 +81,31 @@ describe('CreateAccount', () => {
     );
     expect(screen.getByLabelText('6-digit code')).toHaveValue('135790');
     expect(screen.queryByText(/we sent a 6-digit code/i)).not.toBeInTheDocument();
+  });
+
+  it('after verify, routes to the server-derived next route from the claim (a fresh draft → Payment)', async () => {
+    renderScreen();
+    await reachVerify();
+    claimDraft.mockResolvedValue({ ok: true, status: 'draft', nextRoute: '/pay' });
+    fireEvent.click(screen.getByRole('button', { name: /verify & continue to payment/i }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/pay'));
+  });
+
+  it('a returning paid account resumes at Upload, NOT Payment (claim result is honoured)', async () => {
+    renderScreen();
+    await reachVerify();
+    claimDraft.mockResolvedValue({ ok: true, status: 'paid', nextRoute: '/upload' });
+    fireEvent.click(screen.getByRole('button', { name: /verify & continue to payment/i }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/upload'));
+    expect(navigate).not.toHaveBeenCalledWith('/pay');
+  });
+
+  it('a claim conflict never opens Payment — it shows recoverable copy instead', async () => {
+    renderScreen();
+    await reachVerify();
+    claimDraft.mockResolvedValue({ ok: false, reason: 'conflict' });
+    fireEvent.click(screen.getByRole('button', { name: /verify & continue to payment/i }));
+    await waitFor(() => expect(screen.getByText(/couldn’t be continued|already/i)).toBeInTheDocument());
+    expect(navigate).not.toHaveBeenCalledWith('/pay');
   });
 });

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
+// The case-study environment runs the deterministic demo payment gateway. The
+// renew route resolves the gateway; set the explicit mode before it loads.
+process.env.PAYMENT_MODE = 'demo';
+
 // Hermetic: control the session (auth) and the DB (prisma) so the claim
 // logic is tested without a live Postgres. Real round-trip verified in prod.
 const getSession = vi.fn();
@@ -35,6 +39,38 @@ const row = {
   category: 'Bakery & Confectionery',
   subCategory: 'Bakery products',
 };
+
+// R1.5 — a stale browser token that points at a paid/later application must
+// never let the anonymous front door (Landing/Eligibility/Describe/Checklist)
+// overwrite that record. Only a draft is editable.
+describe('PATCH /api/applications/current — draft immutability', () => {
+  beforeEach(() => {
+    findUnique.mockReset();
+    update.mockReset();
+  });
+
+  it('updates an editable draft', async () => {
+    findUnique.mockResolvedValue({ ...row, status: 'draft' });
+    update.mockResolvedValue({ ...row, businessName: 'Riya' });
+    const res = await request(makeApp())
+      .patch('/api/applications/current')
+      .set('x-draft-token', 't1')
+      .send({ businessName: 'Riya' });
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('rejects a non-draft PATCH with a typed conflict and leaves the record unchanged', async () => {
+    findUnique.mockResolvedValue({ ...row, status: 'paid' });
+    const res = await request(makeApp())
+      .patch('/api/applications/current')
+      .set('x-draft-token', 't1')
+      .send({ businessName: 'Overwrite attempt' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('NOT_DRAFT');
+    expect(update).not.toHaveBeenCalled();
+  });
+});
 
 describe('POST /api/applications/current/claim', () => {
   beforeEach(() => {
@@ -94,6 +130,39 @@ describe('POST /api/applications/current/claim', () => {
   it('409 when the draft belongs to another account', async () => {
     getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
     findUnique.mockResolvedValue({ ...row, bakerId: 'someone-else' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/claim')
+      .set('x-draft-token', 't1');
+    expect(res.status).toBe(409);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('a claimed draft reports the Payment route so the client never routes blindly', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findUnique.mockResolvedValue({ ...row, status: 'draft', bakerId: null });
+    update.mockResolvedValue({ ...row, status: 'draft', bakerId: 'u1' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/claim')
+      .set('x-draft-token', 't1');
+    expect(res.status).toBe(200);
+    expect(res.body.nextRoute).toBe('/pay');
+  });
+
+  it('the caller’s own paid application resumes at Upload without being mutated', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findUnique.mockResolvedValue({ ...row, status: 'paid', bakerId: 'u1' });
+    const res = await request(makeApp())
+      .post('/api/applications/current/claim')
+      .set('x-draft-token', 't1');
+    expect(res.status).toBe(200);
+    expect(res.body.nextRoute).toBe('/upload');
+    // A paid record is immutable to claim — no re-write, no reset to draft.
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('an unclaimed non-draft token is a conflict — never claimed or mutated', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', role: 'baker' } });
+    findUnique.mockResolvedValue({ ...row, status: 'paid', bakerId: null });
     const res = await request(makeApp())
       .post('/api/applications/current/claim')
       .set('x-draft-token', 't1');

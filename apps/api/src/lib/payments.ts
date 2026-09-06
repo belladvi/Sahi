@@ -65,14 +65,31 @@ class RazorpayGateway implements PaymentGateway {
 
 let cached: PaymentGateway | null = null;
 
-/** Real gateway when RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET are set; else mock. */
+/** Payment mode is explicit and fail-closed (mirrors R0's AUTH_DELIVERY_MODE):
+ *  - `demo`     → the deterministic mock gateway (the case-study environment).
+ *  - `provider` → real Razorpay; requires COMPLETE config or it throws. It
+ *                 NEVER silently falls back to demo.
+ *  - unset/invalid → throw, so an ambiguous environment never processes money. */
 export function getGateway(): PaymentGateway {
   if (cached) return cached;
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET ?? 'mock_webhook_secret';
-  cached = keyId && keySecret ? new RazorpayGateway(keyId, keySecret, webhookSecret) : new MockGateway();
-  return cached;
+  const mode = process.env.PAYMENT_MODE;
+  if (mode === 'demo') {
+    cached = new MockGateway();
+    return cached;
+  }
+  if (mode === 'provider') {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!keyId || !keySecret || !webhookSecret) {
+      throw new Error(
+        'PAYMENT_MODE=provider requires RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET',
+      );
+    }
+    cached = new RazorpayGateway(keyId, keySecret, webhookSecret);
+    return cached;
+  }
+  throw new Error('PAYMENT_MODE must be set to "demo" or "provider"');
 }
 
 /** For tests: drop the memoised gateway so env changes take effect. */

@@ -195,6 +195,27 @@ export interface FilingStatusView {
   verifyToken: string | null; // public buyer-verify token, only once approved
 }
 
+/** The single source of truth for the connected resume route: given an
+ * application's REAL server state, where does the journey continue? Used after
+ * OTP (and by the payment resume) so the client never routes blindly to /pay.
+ * draft→Payment, paid→Upload, preparing/filed/gov_query→Filing Status,
+ * approved→Dashboard. Anything unexpected defaults to Payment (the start). */
+export function nextRouteForStatus(status: string): string {
+  switch (status) {
+    case 'paid':
+      return '/upload';
+    case 'preparing':
+    case 'filed':
+    case 'gov_query':
+      return '/status';
+    case 'approved':
+      return '/dashboard';
+    case 'draft':
+    default:
+      return '/pay';
+  }
+}
+
 /** The baker has submitted her packet — from her side it's "we're handling it".
  * Covers preparing (with ops) through approved. */
 export function hasFiled(status: FilingStatus): boolean {

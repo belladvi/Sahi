@@ -5,6 +5,7 @@ import {
   documentsSchema,
   formASchema,
   computeTrustScore,
+  nextRouteForStatus,
   renewalStatus,
   RENEWAL_AMOUNT_PAISE,
   RENEWAL_GOV_FEE_RUPEES,
@@ -99,6 +100,13 @@ applicationsRouter.patch('/applications/current', async (req, res, next) => {
       res.status(404).json({ error: 'No draft' });
       return;
     }
+    // Immutable once paid or later: a stale token must never let the anonymous
+    // front door overwrite a real application. Reject with a typed conflict and
+    // leave the record untouched (the client starts a fresh draft instead).
+    if (existing.status !== 'draft') {
+      res.status(409).json({ error: 'This application can no longer be edited', code: 'NOT_DRAFT' });
+      return;
+    }
 
     const data = { ...parsed.data } as Record<string, unknown>;
 
@@ -139,6 +147,17 @@ applicationsRouter.post('/applications/current/claim', requireAuth(), async (req
       res.status(404).json({ error: 'No draft' });
       return;
     }
+    // Non-draft record: immutable. If it's the caller's own application, resume
+    // it at its server-derived route (never mutate/reset it). If it isn't the
+    // caller's, it's a conflict — never claim someone else's paid/later work.
+    if (existing.status !== 'draft') {
+      if (existing.bakerId && existing.bakerId === userId) {
+        res.json({ ...toDraft(existing), nextRoute: nextRouteForStatus(existing.status) });
+        return;
+      }
+      res.status(409).json({ error: 'This application can no longer be claimed', code: 'NOT_DRAFT' });
+      return;
+    }
     if (existing.bakerId && existing.bakerId !== userId) {
       res.status(409).json({ error: 'Draft already linked to another account' });
       return;
@@ -147,7 +166,7 @@ applicationsRouter.post('/applications/current/claim', requireAuth(), async (req
       where: { draftToken: token },
       data: { bakerId: userId },
     });
-    res.json(toDraft(updated));
+    res.json({ ...toDraft(updated), nextRoute: nextRouteForStatus(updated.status) });
   } catch (err) {
     next(err);
   }

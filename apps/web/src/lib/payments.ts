@@ -8,12 +8,20 @@ export interface OrderInfo {
   mock: boolean;
 }
 
-/** Create a Razorpay order for the signed-in baker's draft. 401 → not signed in. */
-export async function createOrder(): Promise<OrderInfo> {
+/** Either a payable order, or a "resume" signal when the baker's application is
+ * already paid/later (so Payment never charges again — it just navigates on). */
+export type OrderResult = OrderInfo | { kind: 'resume'; nextRoute: string };
+
+/** Create a Razorpay order for the signed-in baker's draft.
+ * 401 → 'unauthenticated'; 404 → 'no-application' (recoverable copy on screen). */
+export async function createOrder(): Promise<OrderResult> {
   const res = await fetch(`${API}/api/payments/order`, { method: 'POST', credentials: 'include' });
   if (res.status === 401) throw new Error('unauthenticated');
+  if (res.status === 404) throw new Error('no-application');
   if (!res.ok) throw new Error('order failed');
-  return (await res.json()) as OrderInfo;
+  const data = (await res.json()) as (OrderInfo & { alreadyPaid?: boolean; nextRoute?: string });
+  if (data.alreadyPaid) return { kind: 'resume', nextRoute: data.nextRoute ?? '/upload' };
+  return data;
 }
 
 /** Mock-mode only: simulate a successful capture (drives the real webhook). */
