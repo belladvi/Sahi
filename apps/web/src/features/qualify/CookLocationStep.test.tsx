@@ -84,6 +84,36 @@ describe('CookLocationStep', () => {
     expect(choice.label).toBe("a friend's kitchen"); // typed text, trimmed
   });
 
+  it('does NOT submit "Somewhere else" via Enter while the text is empty', () => {
+    const onNext = vi.fn();
+    render(<CookLocationStep onNext={onNext} />);
+    fireEvent.click(screen.getAllByRole('radio')[2]!); // Somewhere else
+    const input = screen.getByPlaceholderText(/relative's kitchen/i);
+    fireEvent.keyDown(input, { key: 'Enter' }); // empty text
+    expect(onNext).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '   ' } }); // whitespace only
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onNext).not.toHaveBeenCalled();
+    // real text -> Enter submits
+    fireEvent.change(input, { target: { value: 'garage' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onNext).toHaveBeenCalledTimes(1);
+    expect((onNext.mock.calls[0]![0] as CookOption).label).toBe('garage');
+  });
+
+  it('restores prior "Somewhere else" text via initialCustomText (Next enabled, no retype)', () => {
+    const onNext = vi.fn();
+    render(<CookLocationStep initialSelectedId="other" initialCustomText="a friend's kitchen" onNext={onNext} />);
+    expect(screen.getByDisplayValue("a friend's kitchen")).toBeInTheDocument();
+    const next = screen.getByRole('button', { name: /next/i });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    expect(onNext).toHaveBeenCalledTimes(1);
+    const choice = onNext.mock.calls[0]![0] as CookOption;
+    expect(choice.id).toBe('other');
+    expect(choice.label).toBe("a friend's kitchen");
+  });
+
   it('renders and selects with reduce-motion ON', () => {
     reduceMotion = true;
     const onNext = vi.fn();

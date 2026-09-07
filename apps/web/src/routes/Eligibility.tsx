@@ -49,6 +49,7 @@ export function Eligibility() {
   const [makeSelection, setMakeSelection] = useState<MakeOption[]>([]);
   const [premises, setPremises] = useState<Premises | null>(null);
   const [cookChoiceId, setCookChoiceId] = useState<string | undefined>(undefined);
+  const [cookOtherText, setCookOtherText] = useState('');
   const [salesChoiceId, setSalesChoiceId] = useState<string | undefined>(undefined);
   const [turnoverBand, setTurnoverBand] = useState<TurnoverBand | null>(null);
   const [saving, setSaving] = useState(false);
@@ -101,9 +102,13 @@ export function Eligibility() {
           step={2}
           totalSteps={4}
           initialSelectedId={cookChoiceId}
+          initialCustomText={cookOtherText}
           onBack={() => setStep(0)}
           onNext={(choice: CookOption) => {
             setCookChoiceId(choice.id);
+            // Keep the "Somewhere else" free text so it's restored on Back
+            // (choice.label carries the typed value for id === 'other').
+            setCookOtherText(choice.id === 'other' ? choice.label : '');
             setPremises(COOK_TO_PREMISES[choice.id] ?? 'rent');
             setStep(2);
           }}

@@ -39,6 +39,7 @@ export interface CookLocationStepProps {
   hint?: string;
   options?: CookOption[];
   initialSelectedId?: string;
+  initialCustomText?: string;
   step?: number;
   totalSteps?: number;
   onNext?: (choice: CookOption) => void;
@@ -162,6 +163,7 @@ export default function CookLocationStep({
   hint = "Pick the option that best fits your setup.",
   options = DEFAULT_OPTIONS,
   initialSelectedId,
+  initialCustomText,
   step = 2,
   totalSteps = 4,
   onNext,
@@ -179,7 +181,7 @@ export default function CookLocationStep({
   }, []);
 
   const [selectedId, setSelectedId] = useState<string | undefined>(initialSelectedId);
-  const [customText, setCustomText] = useState("");
+  const [customText, setCustomText] = useState(initialCustomText ?? "");
 
   const selected = options.find((o) => o.id === selectedId);
   const needsText = selected?.isOther === true;
@@ -197,7 +199,9 @@ export default function CookLocationStep({
   const onFootLeave = () => { mx.set(0); my.set(0); };
 
   const submit = () => {
-    if (!selected) return;
+    // Guard on canProceed (not just `selected`) so the Enter key can't submit
+    // "Somewhere else" with an empty label past the disabled button.
+    if (!canProceed || !selected) return;
     onNext?.(needsText ? { ...selected, label: customText.trim() } : selected);
   };
 
