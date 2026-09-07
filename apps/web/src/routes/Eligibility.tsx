@@ -8,6 +8,7 @@ import { Surface } from '../components/ui/Surface';
 import { updateDraft } from '../lib/draft';
 import QualifyMakeStep, { type MakeOption } from '../features/qualify/QualifyMakeStep';
 import CookLocationStep, { type CookOption } from '../features/qualify/CookLocationStep';
+import SalesStep, { type SalesOption } from '../features/qualify/SalesStep';
 
 // Step-2 premium options map onto the existing two-value `Premises` enum so the
 // backend/checklist/upload/Form-A stay unchanged (additive — no shared/DB edit).
@@ -18,6 +19,15 @@ const COOK_TO_PREMISES: Record<string, Premises> = {
   'own-home': 'own',
   'rented-home': 'rent',
   other: 'rent',
+};
+
+// Step-3 premium options both sit at/below the ₹1.5cr Basic threshold, so both
+// map to the existing 'basic' TurnoverBand (the old '>₹1.5cr' / 'above' path is
+// dropped — that turnover needs a State Licence we don't support). No shared/DB
+// change; the result screen already handles 'basic' as eligible.
+const SALES_TO_BAND: Record<string, TurnoverBand> = {
+  starting: 'basic',
+  under: 'basic',
 };
 
 // Step-1 chips. Labels are what we persist to the draft (products[]) and feed the
@@ -39,6 +49,7 @@ export function Eligibility() {
   const [makeSelection, setMakeSelection] = useState<MakeOption[]>([]);
   const [premises, setPremises] = useState<Premises | null>(null);
   const [cookChoiceId, setCookChoiceId] = useState<string | undefined>(undefined);
+  const [salesChoiceId, setSalesChoiceId] = useState<string | undefined>(undefined);
   const [turnoverBand, setTurnoverBand] = useState<TurnoverBand | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -101,6 +112,28 @@ export function Eligibility() {
     );
   }
 
+  // Step 3 (index 2) — premium "Roughly, how much do you sell a year?". Like the
+  // earlier steps it's self-contained in the shell (own header + progress). Back
+  // returns to the cook step (its selection restored); the chosen band is saved
+  // only at finish(). Both options map to 'basic' (see SALES_TO_BAND).
+  if (step === 2) {
+    return (
+      <AppShell>
+        <SalesStep
+          step={3}
+          totalSteps={4}
+          initialSelectedId={salesChoiceId}
+          onBack={() => setStep(1)}
+          onSubmit={(choice: SalesOption) => {
+            setSalesChoiceId(choice.id);
+            setTurnoverBand(SALES_TO_BAND[choice.id] ?? 'basic');
+            setStep(3);
+          }}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <AppHeader title="Do you qualify?" onBack={() => setStep(step - 1)} />
@@ -110,32 +143,6 @@ export function Eligibility() {
             <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-action' : 'bg-line'}`} />
           ))}
         </div>
-
-        {step === 2 && (
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold">Roughly, your yearly sales?</h2>
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => setTurnoverBand('basic')}
-                className={`w-full rounded-2xl p-4 text-left ring-1 ${turnoverBand === 'basic' ? 'ring-action' : 'ring-line'}`}
-              >
-                <span className="font-medium">Under ₹1.5 crore a year</span>
-                <p className="text-xs text-copy-muted">Almost every home baker</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTurnoverBand('above')}
-                className={`w-full rounded-2xl p-4 text-left ring-1 ${turnoverBand === 'above' ? 'ring-action' : 'ring-line'}`}
-              >
-                <span className="font-medium">More than ₹1.5 crore a year</span>
-              </button>
-            </div>
-            <PrimaryAction type="button" disabled={!turnoverBand} onClick={() => setStep(3)}>
-              See my result
-            </PrimaryAction>
-          </section>
-        )}
 
         {step === 3 && result && (
           <section className="space-y-4">
