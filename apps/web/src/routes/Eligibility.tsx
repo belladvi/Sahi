@@ -2,13 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { evaluateEligibility, type Premises, type TurnoverBand } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
-import { AppHeader } from '../components/AppHeader';
-import { PrimaryAction } from '../components/ui/PrimaryAction';
-import { Surface } from '../components/ui/Surface';
 import { updateDraft } from '../lib/draft';
 import QualifyMakeStep, { type MakeOption } from '../features/qualify/QualifyMakeStep';
 import CookLocationStep, { type CookOption } from '../features/qualify/CookLocationStep';
 import SalesStep, { type SalesOption } from '../features/qualify/SalesStep';
+import ResultStep from '../features/qualify/ResultStep';
 
 // Step-2 premium options map onto the existing two-value `Premises` enum so the
 // backend/checklist/upload/Form-A stay unchanged (additive — no shared/DB edit).
@@ -139,37 +137,25 @@ export function Eligibility() {
     );
   }
 
-  return (
-    <AppShell>
-      <AppHeader title="Do you qualify?" onBack={() => setStep(step - 1)} />
-      <div className="flex flex-1 flex-col p-6">
-        <div className="mb-6 flex gap-1.5" aria-label={`Step ${step + 1} of 4`}>
-          {[0, 1, 2, 3].map((i) => (
-            <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-action' : 'bg-line'}`} />
-          ))}
-        </div>
+  // Step 4 (index 3) — premium "You qualify" result hero. Self-contained in the
+  // shell like the earlier steps. Real fee values come from evaluateEligibility
+  // (not hardcoded). Back returns to the sales step; Continue persists the draft
+  // and moves on (finish()), guarded against a double-submit while saving.
+  if (step === 3 && result?.eligible) {
+    return (
+      <AppShell>
+        <ResultStep
+          priceAllIn={result.total}
+          govtFee={result.govFee}
+          helpFee={result.serviceFee}
+          onBack={() => setStep(2)}
+          onContinue={() => {
+            if (!saving) void finish();
+          }}
+        />
+      </AppShell>
+    );
+  }
 
-        {step === 3 && result && (
-          <section className="space-y-4">
-            <Surface className={result.eligible ? 'ring-verified/40' : ''}>
-              <h2 className="text-xl font-semibold">
-                {result.eligible ? 'You qualify 🎉' : 'A quick heads-up'}
-              </h2>
-              <p className="mt-2 text-sm text-copy-muted">{result.message}</p>
-              {result.eligible && (
-                <p className="mt-3 text-sm">
-                  FSSAI <span className="font-semibold">Basic Registration</span> —{' '}
-                  <span className="text-action font-semibold">₹{result.total}</span> all-in (₹
-                  {result.govFee} govt + ₹{result.serviceFee} our help).
-                </p>
-              )}
-            </Surface>
-            <PrimaryAction type="button" disabled={saving} onClick={finish}>
-              {saving ? 'Saving…' : result.eligible ? 'Continue' : 'Continue anyway'}
-            </PrimaryAction>
-          </section>
-        )}
-      </div>
-    </AppShell>
-  );
+  return null;
 }
