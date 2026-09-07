@@ -26,7 +26,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion, useSpring, type Variants } from "motion/react";
-import SideScrollbar from "./SideScrollbar";
+import JourneyRail from "../../components/JourneyRail";
 // This repo has no shadcn `Button` and no `@/` path alias (Step 1 uses plain
 // <button>), so `Button` is a bare native button element — the component uses it
 // exactly like the shadcn Button (className/onClick/disabled/children).
@@ -206,13 +206,12 @@ export default function CookLocationStep({
   };
 
   return (
-    // Sized to the scroll frame + a small fixed overrun (calc(100% + 88px)) so the
-    // step overflows by a predictable ~88px on every screen — just enough for the
-    // journey rail to be live (travels + blooms at "Next") without a long scroll.
-    // shrink-0 stops the flex parent from compressing it back to one screen.
-    <section ref={sectionRef} className="relative flex min-h-[calc(100%_+_88px)] shrink-0 flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
-      {/* journey rail — self-contained fixed overlay; lights up as the step scrolls */}
-      <SideScrollbar scrollRef={sectionRef} />
+    // Sized to exactly the scroll frame (min-h-full) so the step fits on one
+    // screen with the CTA reachable — no forced overrun, no scroll to continue.
+    // shrink-0 stops the flex parent from compressing it below one screen.
+    <section ref={sectionRef} className="relative flex min-h-full shrink-0 flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
+      {/* journey rail — step-driven overlay; always visible, animates on step change */}
+      <JourneyRail step={step} totalSteps={totalSteps} />
       {/* header */}
       <div className="flex items-center justify-between">
         <button type="button" onClick={onBack} className="flex items-center gap-2.5 text-[15px] font-medium text-[#e6edf3] hover:opacity-80">

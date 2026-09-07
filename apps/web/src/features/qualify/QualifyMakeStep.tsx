@@ -33,7 +33,7 @@ import {
   motion, AnimatePresence, useReducedMotion, useMotionValue, useSpring,
   type Variants,
 } from "motion/react";
-import SideScrollbar from "./SideScrollbar";
+import JourneyRail from "../../components/JourneyRail";
 
 export interface MakeOption { id: string; label: string; custom?: boolean; }
 
@@ -229,9 +229,9 @@ export default function QualifyMakeStep({
   const onFootLeave = () => { mx.set(0); my.set(0); };
 
   return (
-    <section ref={sectionRef} className="relative flex min-h-[calc(100%_+_88px)] shrink-0 flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
-      {/* journey rail — self-contained fixed overlay; renders null unless the step scrolls */}
-      <SideScrollbar scrollRef={sectionRef} />
+    <section ref={sectionRef} className="relative flex min-h-full shrink-0 flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
+      {/* journey rail — step-driven overlay; always visible, animates on step change */}
+      <JourneyRail step={step} totalSteps={totalSteps} />
       {/* header */}
       <div className="flex items-center justify-between">
         <button type="button" onClick={onBack} className="flex items-center gap-2.5 text-[15px] font-medium text-[#e6edf3] hover:opacity-80">
