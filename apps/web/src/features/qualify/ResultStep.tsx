@@ -34,6 +34,9 @@ export interface ResultStepProps {
   steps?: ReactNode[];
   ctaLabel?: string;
   microcopy?: string;
+  /** When true the CTA shows an immediate "Starting…" busy state and ignores
+   * taps — used while the draft is being persisted so the tap never feels dead. */
+  pending?: boolean;
   onContinue?: () => void;
   onBack?: () => void;
 }
@@ -89,6 +92,7 @@ export default function ResultStep({
   steps = DEFAULT_STEPS,
   ctaLabel = "Start my registration",
   microcopy = "We'll guide you the whole way.",
+  pending = false,
   onContinue,
   onBack,
 }: ResultStepProps) {
@@ -267,11 +271,19 @@ export default function ResultStep({
         {/* CTA */}
         <div className="mt-auto pt-4" onPointerMove={onFootMove} onPointerLeave={onFootLeave}>
           <motion.div style={reduce ? undefined : { x: mx, y: my }} {...rise(1.5)}>
-            <Button onClick={onContinue}
-              className="relative flex h-auto w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-[#f4ba12] to-[#ffce3b] py-4 text-[15px] font-semibold text-[#0b1622] hover:brightness-105 active:scale-[.985]">
-              {ctaLabel}
-              <motion.span aria-hidden className="inline-flex" animate={reduce ? undefined : { x: [0, 4, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>→</motion.span>
-              {!reduce && (
+            <Button onClick={() => !pending && onContinue?.()} disabled={pending} aria-busy={pending}
+              className={[
+                "relative flex h-auto w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-[#f4ba12] to-[#ffce3b] py-4 text-[15px] font-semibold text-[#0b1622]",
+                pending ? "cursor-wait opacity-90" : "hover:brightness-105 active:scale-[.985]",
+              ].join(" ")}>
+              {pending ? "Starting…" : ctaLabel}
+              {pending ? (
+                <motion.span aria-hidden className="inline-flex h-4 w-4 rounded-full border-2 border-[#0b1622]/25 border-t-[#0b1622]"
+                  animate={reduce ? undefined : { rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: "linear" }} />
+              ) : (
+                <motion.span aria-hidden className="inline-flex" animate={reduce ? undefined : { x: [0, 4, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>→</motion.span>
+              )}
+              {!reduce && !pending && (
                 <motion.span aria-hidden className="pointer-events-none absolute inset-y-0 w-1/3 -skew-x-12 bg-white/45 blur-[2px]"
                   initial={{ x: "-170%" }} animate={{ x: "360%" }} transition={{ duration: 2.6, delay: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.2 }} />
               )}

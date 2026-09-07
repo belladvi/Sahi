@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { evaluateEligibility, type Premises, type TurnoverBand } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
@@ -51,14 +51,38 @@ export function Eligibility() {
   const [salesChoiceId, setSalesChoiceId] = useState<string | undefined>(undefined);
   const [turnoverBand, setTurnoverBand] = useState<TurnoverBand | null>(null);
   const [saving, setSaving] = useState(false);
+  // Holds the in-flight background draft write started when the result screen
+  // shows, so tapping "Start my registration" only has to navigate.
+  const prefetch = useRef<Promise<unknown> | null>(null);
 
   const result = turnoverBand ? evaluateEligibility(turnoverBand) : null;
+
+  // Persist the draft in the background as soon as the (eligible) result step is
+  // shown. The baker is watching the confetti/price reveal, so the network write
+  // is hidden — by the time they tap Continue it's almost always already done.
+  useEffect(() => {
+    if (step !== 3 || !result?.eligible || !premises || !turnoverBand) return;
+    const p = updateDraft({ products: makeSelection.map((o) => o.label), premises, turnoverBand });
+    p.catch(() => {}); // finish() retries on failure; swallow here to avoid an unhandled rejection
+    prefetch.current = p;
+    return () => {
+      prefetch.current = null;
+    };
+  }, [step, result?.eligible, premises, turnoverBand, makeSelection]);
 
   async function finish() {
     if (!premises || !turnoverBand) return;
     setSaving(true);
     try {
-      await updateDraft({ products: makeSelection.map((o) => o.label), premises, turnoverBand });
+      // Prefer the background write started on mount; fall back to a fresh write
+      // if it never ran or failed, so the draft is guaranteed persisted before we
+      // route to /describe (which reloads the draft and would bounce if absent).
+      try {
+        if (!prefetch.current) throw new Error('no-prefetch');
+        await prefetch.current;
+      } catch {
+        await updateDraft({ products: makeSelection.map((o) => o.label), premises, turnoverBand });
+      }
       navigate('/describe');
     } finally {
       setSaving(false);
@@ -148,6 +172,7 @@ export function Eligibility() {
           priceAllIn={result.total}
           govtFee={result.govFee}
           helpFee={result.serviceFee}
+          pending={saving}
           onBack={() => setStep(2)}
           onContinue={() => {
             if (!saving) void finish();
