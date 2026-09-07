@@ -7,6 +7,18 @@ import { PrimaryAction } from '../components/ui/PrimaryAction';
 import { Surface } from '../components/ui/Surface';
 import { updateDraft } from '../lib/draft';
 import QualifyMakeStep, { type MakeOption } from '../features/qualify/QualifyMakeStep';
+import CookLocationStep, { type CookOption } from '../features/qualify/CookLocationStep';
+
+// Step-2 premium options map onto the existing two-value `Premises` enum so the
+// backend/checklist/upload/Form-A stay unchanged (additive — no shared/DB edit).
+// "Somewhere else" is treated as a non-owned kitchen → `rent` (needs address
+// proof), the conservative, food-safety-safe default. The typed free-text label
+// is kept only for the in-wizard selection; it isn't persisted (no field for it).
+const COOK_TO_PREMISES: Record<string, Premises> = {
+  'own-home': 'own',
+  'rented-home': 'rent',
+  other: 'rent',
+};
 
 // Step-1 chips. Labels are what we persist to the draft (products[]) and feed the
 // server-side category engine — kept identical to the previous fixed chip list so
@@ -26,6 +38,7 @@ export function Eligibility() {
   const [step, setStep] = useState(0);
   const [makeSelection, setMakeSelection] = useState<MakeOption[]>([]);
   const [premises, setPremises] = useState<Premises | null>(null);
+  const [cookChoiceId, setCookChoiceId] = useState<string | undefined>(undefined);
   const [turnoverBand, setTurnoverBand] = useState<TurnoverBand | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -66,6 +79,28 @@ export function Eligibility() {
     );
   }
 
+  // Step 2 (index 1) — premium "Where do you cook?". Like step 1 it's a
+  // self-contained screen (own header + progress), so it renders directly in the
+  // shell without AppHeader. Back returns to the make step (chips restored from
+  // state); the cook choice is mapped to `premises` and saved only at finish().
+  if (step === 1) {
+    return (
+      <AppShell>
+        <CookLocationStep
+          step={2}
+          totalSteps={4}
+          initialSelectedId={cookChoiceId}
+          onBack={() => setStep(0)}
+          onNext={(choice: CookOption) => {
+            setCookChoiceId(choice.id);
+            setPremises(COOK_TO_PREMISES[choice.id] ?? 'rent');
+            setStep(2);
+          }}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <AppHeader title="Do you qualify?" onBack={() => setStep(step - 1)} />
@@ -75,31 +110,6 @@ export function Eligibility() {
             <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-action' : 'bg-line'}`} />
           ))}
         </div>
-
-        {step === 1 && (
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold">Where do you cook?</h2>
-            <div className="space-y-3">
-              {(['own', 'rent'] as Premises[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPremises(p)}
-                  className={`w-full rounded-2xl p-4 text-left ring-1 ${
-                    premises === p ? 'ring-action' : 'ring-line'
-                  }`}
-                >
-                  <span className="font-medium capitalize">
-                    {p === 'own' ? 'I own my home / kitchen' : 'I rent my home / kitchen'}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <PrimaryAction type="button" disabled={!premises} onClick={() => setStep(2)}>
-              Next
-            </PrimaryAction>
-          </section>
-        )}
 
         {step === 2 && (
           <section className="space-y-4">

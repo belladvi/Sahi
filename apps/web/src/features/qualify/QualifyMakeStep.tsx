@@ -28,7 +28,7 @@
  *     onNext={(selected) => { save(selected); navigate("/qualify/2"); }} />
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   motion, AnimatePresence, useReducedMotion, useMotionValue, useSpring,
   type Variants,
@@ -155,6 +155,14 @@ export default function QualifyMakeStep({
   const footRef = useRef<HTMLDivElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
+  // The AppShell <main> scroll container is shared across steps; reset it to the
+  // top on mount so the step always opens at its heading (e.g. returning here
+  // from step 2). Matches step 2's behaviour.
+  useLayoutEffect(() => {
+    const scroller = sectionRef.current?.closest("main");
+    if (scroller) scroller.scrollTop = 0;
+  }, []);
+
   // spotlight + tilt (springs)
   const rx = useSpring(0, { stiffness: 150, damping: 15 });
   const ry = useSpring(0, { stiffness: 150, damping: 15 });
@@ -221,7 +229,7 @@ export default function QualifyMakeStep({
   const onFootLeave = () => { mx.set(0); my.set(0); };
 
   return (
-    <section ref={sectionRef} className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
+    <section ref={sectionRef} className="relative flex min-h-[calc(100%_+_88px)] shrink-0 flex-col overflow-hidden bg-[#0b1622] px-[18px] pt-5 text-white">
       {/* journey rail — self-contained fixed overlay; renders null unless the step scrolls */}
       <SideScrollbar scrollRef={sectionRef} />
       {/* header */}
