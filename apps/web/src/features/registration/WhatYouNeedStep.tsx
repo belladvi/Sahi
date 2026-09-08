@@ -23,6 +23,7 @@
 
 import { useRef, useState } from "react";
 import { motion, useReducedMotion, useSpring } from "motion/react";
+import JourneyRail, { FUNNEL_TOTAL_STEPS } from "../../components/JourneyRail";
 // This repo has no shadcn `Button` and no `@/` path alias (the other steps use a
 // plain <button>), so `Button` is a bare native button element — used exactly
 // like the shadcn Button (className/onClick/onPointerDown/children).
@@ -36,6 +37,9 @@ export interface NeededDoc {
 
 export interface WhatYouNeedStepProps {
   title?: string;
+  /** Journey-rail position (1-based) — defaults to the last pre-account step. */
+  step?: number;
+  totalSteps?: number;
   reason?: string;
   licenceName?: string;
   documents?: NeededDoc[];
@@ -53,6 +57,8 @@ const DEFAULT_DOCS: NeededDoc[] = [
 
 export default function WhatYouNeedStep({
   title = "What you'll need",
+  step = FUNNEL_TOTAL_STEPS,
+  totalSteps = FUNNEL_TOTAL_STEPS,
   reason = "own your kitchen",
   licenceName = "FSSAI Basic Registration",
   documents = DEFAULT_DOCS,
@@ -87,7 +93,9 @@ export default function WhatYouNeedStep({
   const rise = (delay: number) => (reduce ? {} : { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5, delay } });
 
   return (
-    <section className="flex min-h-full flex-col bg-[#0b1622] px-[18px] pt-5 text-white">
+    <section className="relative flex min-h-full flex-col bg-[#0b1622] px-[18px] pt-5 text-white">
+      {/* journey rail — same funnel-wide rail as the qualify + kitchen steps */}
+      <JourneyRail step={step} totalSteps={totalSteps} />
       {/* header */}
       <div className="flex items-center gap-2.5 border-b border-[#1a2a39] pb-4 text-[17px] font-semibold">
         <button type="button" onClick={onBack} aria-label="Back" className="text-[#e6edf3] hover:opacity-80">←</button>

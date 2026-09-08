@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { evaluateEligibility, type Premises, type TurnoverBand } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
+import { FUNNEL_TOTAL_STEPS } from '../components/JourneyRail';
 import { updateDraft } from '../lib/draft';
 import QualifyMakeStep, { type MakeOption } from '../features/qualify/QualifyMakeStep';
 import CookLocationStep, { type CookOption } from '../features/qualify/CookLocationStep';
@@ -100,7 +101,7 @@ export function Eligibility() {
       <AppShell>
         <QualifyMakeStep
           step={1}
-          totalSteps={4}
+          totalSteps={FUNNEL_TOTAL_STEPS}
           options={[...MAKE_OPTIONS, ...customOptions]}
           initialSelected={makeSelection.map((o) => o.id)}
           onBack={() => navigate('/')}
@@ -122,7 +123,7 @@ export function Eligibility() {
       <AppShell>
         <CookLocationStep
           step={2}
-          totalSteps={4}
+          totalSteps={FUNNEL_TOTAL_STEPS}
           initialSelectedId={cookChoiceId}
           initialCustomText={cookOtherText}
           onBack={() => setStep(0)}
@@ -148,7 +149,7 @@ export function Eligibility() {
       <AppShell>
         <SalesStep
           step={3}
-          totalSteps={4}
+          totalSteps={FUNNEL_TOTAL_STEPS}
           initialSelectedId={salesChoiceId}
           onBack={() => setStep(1)}
           onSubmit={(choice: SalesOption) => {

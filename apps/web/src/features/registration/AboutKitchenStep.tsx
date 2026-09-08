@@ -27,7 +27,7 @@
 
 import { useRef, useState } from "react";
 import { motion, useReducedMotion, useSpring } from "motion/react";
-import JourneyRail from "../../components/JourneyRail";
+import JourneyRail, { FUNNEL_TOTAL_STEPS } from "../../components/JourneyRail";
 // This repo has no shadcn `Button` and no `@/` path alias (the other steps use a
 // plain <button>), so `Button` is a bare native button element — used exactly
 // like the shadcn Button (className/onClick/disabled/onPointerDown/children).
@@ -35,6 +35,13 @@ const Button = "button" as const;
 
 export interface AboutKitchenStepProps {
   title?: string;
+  /** Journey-rail position (1-based) in the pre-account funnel. */
+  step?: number;
+  totalSteps?: number;
+  /** Busy state for Continue while the wrapper saves (instant feedback). */
+  pending?: boolean;
+  /** Inline error under the CTA (e.g. save failed) — clears the busy state. */
+  error?: string | null;
   makes?: string[];
   designations?: string[];
   initialName?: string;
@@ -74,6 +81,10 @@ const innerStyle = (active: boolean): React.CSSProperties => ({
 
 export default function AboutKitchenStep({
   title = "Tell us about your kitchen",
+  step = FUNNEL_TOTAL_STEPS - 1,
+  totalSteps = FUNNEL_TOTAL_STEPS,
+  pending = false,
+  error = null,
   makes = [],
   designations = DEFAULT_DESIGNATIONS,
   initialName = "",
@@ -94,9 +105,6 @@ export default function AboutKitchenStep({
   const nameValid = name.trim().length > 0;
   const descFilled = description.trim().length > 0;
   const canProceed = nameValid && designation.length > 0;
-  // journey rail reflects completion of the two required fields (name → designation);
-  // it reaches full exactly when Continue enables.
-  const filledCount = (nameValid ? 1 : 0) + (designation.length > 0 ? 1 : 0);
 
   const mx = useSpring(0, { stiffness: 200, damping: 15 });
   const my = useSpring(0, { stiffness: 200, damping: 15 });
@@ -130,8 +138,8 @@ export default function AboutKitchenStep({
 
   return (
     <section className="relative flex min-h-full flex-col bg-[#0b1622] px-[18px] pt-5 text-white">
-      {/* journey rail — step-driven overlay; fills as the required fields are completed */}
-      <JourneyRail step={filledCount + 1} totalSteps={3} />
+      {/* journey rail — same funnel-wide, position-driven rail as the qualify steps */}
+      <JourneyRail step={step} totalSteps={totalSteps} />
       {/* header */}
       <div className="flex items-center gap-2.5 border-b border-[#1a2a39] pb-4 text-[17px] font-semibold">
         <button type="button" onClick={onBack} aria-label="Back" className="text-[#e6edf3] hover:opacity-80">←</button>
@@ -237,21 +245,29 @@ export default function AboutKitchenStep({
             : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
           transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}>
           <Button
-            onClick={() => canProceed && onContinue?.({ name: name.trim(), designation, description: description.trim() })}
-            onPointerDown={onBtnDown}
-            disabled={!canProceed}
+            onClick={() => canProceed && !pending && onContinue?.({ name: name.trim(), designation, description: description.trim() })}
+            onPointerDown={pending ? undefined : onBtnDown}
+            disabled={!canProceed || pending}
+            aria-busy={pending}
             className={[
               "relative flex h-auto w-full items-center justify-center gap-2 overflow-hidden rounded-xl py-4 text-[15px] font-semibold transition-colors",
               canProceed
-                ? "bg-gradient-to-r from-[#f4ba12] to-[#ffce3b] text-[#0b1622] hover:brightness-105 active:scale-[.985]"
+                ? pending
+                  ? "cursor-wait bg-gradient-to-r from-[#f4ba12] to-[#ffce3b] text-[#0b1622] opacity-90"
+                  : "bg-gradient-to-r from-[#f4ba12] to-[#ffce3b] text-[#0b1622] hover:brightness-105 active:scale-[.985]"
                 : "cursor-not-allowed bg-[#182838] text-[#5f7387] hover:bg-[#182838]",
             ].join(" ")}
           >
-            Continue
-            <motion.span aria-hidden className="inline-flex"
-              animate={canProceed && !reduce ? { x: [0, 4, 0] } : { x: 0 }}
-              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>→</motion.span>
-            {canProceed && !reduce && (
+            {pending ? "Saving…" : "Continue"}
+            {pending ? (
+              <motion.span aria-hidden className="inline-flex h-4 w-4 rounded-full border-2 border-[#0b1622]/25 border-t-[#0b1622]"
+                animate={reduce ? undefined : { rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: "linear" }} />
+            ) : (
+              <motion.span aria-hidden className="inline-flex"
+                animate={canProceed && !reduce ? { x: [0, 4, 0] } : { x: 0 }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>→</motion.span>
+            )}
+            {canProceed && !reduce && !pending && (
               <motion.span aria-hidden className="pointer-events-none absolute inset-y-0 w-1/3 -skew-x-12 bg-white/45 blur-[2px]"
                 initial={{ x: "-170%" }} animate={{ x: "360%" }}
                 transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.2 }} />
@@ -265,6 +281,9 @@ export default function AboutKitchenStep({
             ))}
           </Button>
         </motion.div>
+        {error && (
+          <p role="alert" className="mt-2.5 text-center text-xs text-[#ffb4a8]">{error}</p>
+        )}
       </div>
     </section>
   );

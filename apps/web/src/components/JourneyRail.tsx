@@ -18,6 +18,10 @@
 import { useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
+/** Pre-account funnel: make → cook → sales → result → kitchen → what you'll need.
+ * Every screen that shows the rail uses this total so the ticks/positions match. */
+export const FUNNEL_TOTAL_STEPS = 6;
+
 export interface JourneyRailProps {
   /** 1-based current step. */
   step: number;

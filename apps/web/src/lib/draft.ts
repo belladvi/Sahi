@@ -54,11 +54,20 @@ export function getDraft(signal?: AbortSignal): Promise<DraftApplication | null>
 
 export async function updateDraft(update: DraftUpdate): Promise<DraftApplication> {
   const token = await ensureDraft();
+  return patchDraft(token, update);
+}
+
+/** PATCH the draft behind a token the caller has ALREADY validated (e.g. a
+ * screen that loaded the draft on mount). Skips `ensureDraft`'s extra GET —
+ * on prod that round-trip alone is ~1.5s, so screens that just read the draft
+ * should save through this instead of `updateDraft`. Throws on a non-2xx. */
+export async function patchDraft(token: string, update: DraftUpdate): Promise<DraftApplication> {
   const res = await fetch(`${API}/api/applications/current`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'x-draft-token': token },
     body: JSON.stringify(update),
   });
+  if (!res.ok) throw new Error(`draft save failed (${res.status})`);
   return (await res.json()) as DraftApplication;
 }
 
