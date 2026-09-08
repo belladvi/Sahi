@@ -2,11 +2,45 @@ import { useNavigate } from 'react-router';
 import { documentChecklist, type DocItem, type Premises } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
-import { PrimaryAction } from '../components/ui/PrimaryAction';
-import { Surface } from '../components/ui/Surface';
 import { LoadError } from '../components/LoadError';
+import WhatYouNeedStep, { type NeededDoc } from '../features/registration/WhatYouNeedStep';
 import { getDraft } from '../lib/draft';
 import { useLoader } from '../lib/useLoader';
+
+/**
+ * "/checklist" — the premium "What you'll need" screen (last free screen before
+ * the account wall).
+ *
+ * Thin wrapper around the self-contained <WhatYouNeedStep /> (own header + CTA),
+ * same pattern as /describe. The wrapper owns only the draft load and the
+ * document list: the shared `documentChecklist` (own=2 / rent=3, the same
+ * own/rent rule the Upload screen applies to its tiles) plus PAN, so the baker
+ * sees photo, Aadhaar, PAN (+ address proof if renting). The screen owns
+ * layout, copy and motion.
+ */
+
+/** Presentation for each shared checklist item: label — one-line description,
+ * plus an optional reassurance note (rendered as the animated gold-bar note). */
+const DOC_PRESENTATION: Record<string, NeededDoc> = {
+  photo: { label: 'Passport-size photo' },
+  aadhaar: { label: 'Aadhaar', desc: 'Identity proof' },
+  address_proof: { label: 'Address proof', desc: 'Bill or rent agreement' },
+};
+
+/** PAN is asked for on this screen (product decision, 2026-09-08) in addition to
+ * the shared upload list: photo, Aadhaar, PAN, then address proof for renters. */
+const PAN_DOC: NeededDoc = {
+  label: 'PAN',
+  desc: 'Business identity',
+  note: 'PAN counts as your business identity, as required by the food authority.',
+};
+
+function toNeededDocs(items: DocItem[]): NeededDoc[] {
+  const docs = items.map((it) => DOC_PRESENTATION[it.key] ?? { label: it.label });
+  const afterAadhaar = docs.findIndex((d) => d.label === 'Aadhaar') + 1;
+  docs.splice(afterAadhaar > 0 ? afterAadhaar : docs.length, 0, PAN_DOC);
+  return docs;
+}
 
 export function Checklist() {
   const navigate = useNavigate();
@@ -20,49 +54,29 @@ export function Checklist() {
     const premises = d.premises ?? 'own';
     return { premises, items: documentChecklist(premises) };
   }, [navigate]);
-  const premises = data?.premises;
-  const items = data?.items ?? [];
+
+  if (status === 'error') {
+    return (
+      <AppShell>
+        <AppHeader title="What you’ll need" onBack={() => navigate('/describe')} />
+        <LoadError onRetry={reload} onHome={() => navigate('/')} />
+      </AppShell>
+    );
+  }
+
+  // Hold until the draft is loaded so the step mounts once with the right docs
+  // (its entrance animation runs at mount).
+  if (!data) return <AppShell>{null}</AppShell>;
 
   return (
     <AppShell>
-      <AppHeader title="What you’ll need" onBack={() => navigate('/describe')} />
-      <div className="flex flex-1 flex-col gap-5 p-6">
-        {status === 'error' ? (
-          <LoadError onRetry={reload} onHome={() => navigate('/')} />
-        ) : !data ? (
-          <p className="text-copy-muted">Loading…</p>
-        ) : (
-          <>
-            <p className="text-sm text-copy-muted">
-              Because you <span className="text-copy">{premises === 'rent' ? 'rent' : 'own'}</span> your
-              kitchen, you’ll need these <span className="text-copy">{items.length}</span> documents. Keep
-              them handy — you’ll upload them after creating your account.
-            </p>
-
-            <Surface className="space-y-3">
-              {items.map((it, idx) => (
-                <div key={it.key} className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action text-xs font-bold text-action-foreground">
-                    {idx + 1}
-                  </span>
-                  <span className="text-sm">{it.label}</span>
-                </div>
-              ))}
-            </Surface>
-
-            <p className="text-xs text-copy-muted">
-              This is the full official list for FSSAI Basic Registration. Next, create an account so
-              we can save your progress before payment.
-            </p>
-
-            <div className="mt-auto">
-              <PrimaryAction type="button" onClick={() => navigate('/create-account')}>
-                Create an account
-              </PrimaryAction>
-            </div>
-          </>
-        )}
-      </div>
+      <WhatYouNeedStep
+        reason={data.premises === 'rent' ? 'rent your kitchen' : 'own your kitchen'}
+        licenceName="FSSAI Basic Registration"
+        documents={toNeededDocs(data.items)}
+        onBack={() => navigate('/describe')}
+        onCreateAccount={() => navigate('/create-account')}
+      />
     </AppShell>
   );
 }
