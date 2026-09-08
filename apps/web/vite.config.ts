@@ -8,7 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': the new worker WAITS; the app applies it at the next route change
+      // (see src/lib/pwa-update.ts) instead of reloading mid-screen.
+      registerType: 'prompt',
       injectRegister: 'auto',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {

@@ -8,11 +8,16 @@ import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import { router } from './router';
 import './index.css';
+import { installPwaUpdates } from './lib/pwa-update';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
   throw new Error('Root element #root not found');
 }
+
+// Auto-apply new builds at the next route change: without this a returning
+// visitor keeps the stale precached bundle until they refresh (see lib/pwa-update.ts).
+installPwaUpdates(router);
 
 createRoot(rootEl).render(
   <StrictMode>
