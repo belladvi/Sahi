@@ -34,6 +34,7 @@ describe('Checklist ("What you’ll need")', () => {
     const labels = screen.getAllByText(/^(Passport-size photo|Aadhaar|PAN|Address proof)$/).map((el) => el.textContent);
     expect(labels).toEqual(['Passport-size photo', 'Aadhaar', 'PAN']);
     expect(screen.getByText(/PAN counts as your business identity/i)).toBeInTheDocument();
+    expect(screen.queryByText(/utility bill or your rent agreement/i)).not.toBeInTheDocument();
   });
 
   it('rented kitchen → 4 documents, address proof last', async () => {
@@ -44,6 +45,9 @@ describe('Checklist ("What you’ll need")', () => {
     const labels = screen.getAllByText(/^(Passport-size photo|Aadhaar|PAN|Address proof)$/).map((el) => el.textContent);
     expect(labels).toEqual(['Passport-size photo', 'Aadhaar', 'PAN', 'Address proof']);
     expect(screen.getByText(/Bill or rent agreement/i)).toBeInTheDocument();
+    // renter helper note cascades in under its own row
+    expect(screen.getByText('A recent utility bill or your rent agreement works.')).toBeInTheDocument();
+    expect(screen.getByText(/PAN counts as your business identity/i)).toBeInTheDocument();
   });
 
   it('Create an account → /create-account; Back → /describe', async () => {

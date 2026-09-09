@@ -1,11 +1,12 @@
 /**
- * WhatYouNeedStep.tsx — pre-account "What you'll need" screen (Sahi PWA).
+ * WhatYouNeedStepRented.tsx — pre-account "What you'll need" screen (Sahi PWA).
  * Stack: React 19 + Vite + TypeScript, Tailwind, shadcn/ui, Motion.  (npm i motion)
  *
  * Shows the document checklist before the account wall.
  * Micro-interactions:
- *   - Card + rows stagger in; each numbered gold badge SPRINGS in; the PAN
- *     note fades up after.
+ *   - Card + rows stagger in; each numbered gold badge SPRINGS in; every
+ *     document note (PAN, Address proof, …) cascades in right after ITS OWN
+ *     row (slide + accent-bar draw + icon pop), so renters' two notes stagger.
  *   - "Create an account" CTA: glow pulse + nudging arrow + tap ripple +
  *     shimmer + magnetic pull.
  *   All motion gated by useReducedMotion.
@@ -126,14 +127,14 @@ export default function WhatYouNeedStep({
             {d.note && (
               <motion.div className="relative ml-[39px] mb-2 overflow-hidden rounded-r-lg bg-[#f2b705]/[0.07] px-3 py-2.5 text-[12px] leading-relaxed text-[#a7b6c4]"
                 initial={reduce ? false : { opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.35 + count * 0.14 + 0.12 }}>
+                transition={{ duration: 0.4, delay: 0.35 + i * 0.14 + 0.15 }}>
                 <motion.span aria-hidden className="absolute left-0 top-0 h-full w-[2px] origin-top bg-[#f4ba12]"
                   initial={reduce ? false : { scaleY: 0 }} animate={{ scaleY: 1 }}
-                  transition={{ duration: 0.42, delay: 0.35 + count * 0.14 + 0.22, ease: "easeOut" }} />
+                  transition={{ duration: 0.42, delay: 0.35 + i * 0.14 + 0.25, ease: "easeOut" }} />
                 <div className="flex items-start gap-2">
                   <motion.svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f4ba12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0" aria-hidden
                     initial={reduce ? false : { scale: 0 }} animate={{ scale: 1 }}
-                    transition={reduce ? { duration: 0 } : { delay: 0.35 + count * 0.14 + 0.26, type: "spring", stiffness: 400, damping: 12 }}>
+                    transition={reduce ? { duration: 0 } : { delay: 0.35 + i * 0.14 + 0.28, type: "spring", stiffness: 400, damping: 12 }}>
                     <circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" />
                   </motion.svg>
                   <span>{d.note}</span>

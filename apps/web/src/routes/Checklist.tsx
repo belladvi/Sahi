@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router';
-import { documentChecklist, type DocItem, type Premises } from '@sahi/shared';
+import type { Premises } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { LoadError } from '../components/LoadError';
-import WhatYouNeedStep, { type NeededDoc } from '../features/registration/WhatYouNeedStep';
+import WhatYouNeedStepRented from '../features/registration/WhatYouNeedStepRented';
+import { documentsFor, reasonFor } from '../features/registration/whatYouNeedData';
 import { getDraft } from '../lib/draft';
 import { useLoader } from '../lib/useLoader';
 
@@ -11,48 +12,27 @@ import { useLoader } from '../lib/useLoader';
  * "/checklist" — the premium "What you'll need" screen (last free screen before
  * the account wall).
  *
- * Thin wrapper around the self-contained <WhatYouNeedStep /> (own header + CTA),
- * same pattern as /describe. The wrapper owns only the draft load and the
- * document list: the shared `documentChecklist` (own=2 / rent=3, the same
- * own/rent rule the Upload screen applies to its tiles) plus PAN, so the baker
- * sees photo, Aadhaar, PAN (+ address proof if renting). The screen owns
- * layout, copy and motion.
+ * Thin wrapper around the self-contained <WhatYouNeedStepRented /> (own header +
+ * CTA), same pattern as /describe. The wrapper owns only the draft load; the
+ * document list and intro phrase are data-driven off the baker's premises
+ * answer from qualify step 2 via `whatYouNeedData` (owners: photo, Aadhaar,
+ * PAN; renters: + address proof with its helper note). The screen owns layout,
+ * copy and motion.
+ *
+ * The stored `Premises` is the shared two-value enum (`own` | `rent`): the
+ * qualify step maps "Somewhere else" onto `rent` at finish(), so the data
+ * file's `other` branch is never reached from a saved draft.
  */
-
-/** Presentation for each shared checklist item: label — one-line description,
- * plus an optional reassurance note (rendered as the animated gold-bar note). */
-const DOC_PRESENTATION: Record<string, NeededDoc> = {
-  photo: { label: 'Passport-size photo' },
-  aadhaar: { label: 'Aadhaar', desc: 'Identity proof' },
-  address_proof: { label: 'Address proof', desc: 'Bill or rent agreement' },
-};
-
-/** PAN is asked for on this screen (product decision, 2026-09-08) in addition to
- * the shared upload list: photo, Aadhaar, PAN, then address proof for renters. */
-const PAN_DOC: NeededDoc = {
-  label: 'PAN',
-  desc: 'Business identity',
-  note: 'PAN counts as your business identity, as required by the food authority.',
-};
-
-function toNeededDocs(items: DocItem[]): NeededDoc[] {
-  const docs = items.map((it) => DOC_PRESENTATION[it.key] ?? { label: it.label });
-  const afterAadhaar = docs.findIndex((d) => d.label === 'Aadhaar') + 1;
-  docs.splice(afterAadhaar > 0 ? afterAadhaar : docs.length, 0, PAN_DOC);
-  return docs;
-}
-
 export function Checklist() {
   const navigate = useNavigate();
-  const { status, data, reload } = useLoader<{ premises: Premises; items: DocItem[] } | null>(async (signal) => {
+  const { status, data, reload } = useLoader<{ premises: Premises } | null>(async (signal) => {
     const d = await getDraft(signal);
     if (signal.aborted) return null;
     if (!d) {
       navigate('/eligibility');
       return null;
     }
-    const premises = d.premises ?? 'own';
-    return { premises, items: documentChecklist(premises) };
+    return { premises: d.premises ?? 'own' };
   }, [navigate]);
 
   if (status === 'error') {
@@ -70,10 +50,10 @@ export function Checklist() {
 
   return (
     <AppShell>
-      <WhatYouNeedStep
-        reason={data.premises === 'rent' ? 'rent your kitchen' : 'own your kitchen'}
+      <WhatYouNeedStepRented
+        reason={reasonFor(data.premises)}
+        documents={documentsFor(data.premises)}
         licenceName="FSSAI Basic Registration"
-        documents={toNeededDocs(data.items)}
         onBack={() => navigate('/describe')}
         onCreateAccount={() => navigate('/create-account')}
       />
