@@ -2,12 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { GOV_FEE_RUPEES, SERVICE_FEE_RUPEES, TOTAL_FEE_RUPEES } from '@sahi/shared';
 import { AppShell } from '../components/AppShell';
-import { AppHeader } from '../components/AppHeader';
-import { PrimaryAction } from '../components/ui/PrimaryAction';
-import { Surface } from '../components/ui/Surface';
+import PaymentStep from '../features/payment/PaymentStep';
 import { createOrder, mockPay, type OrderInfo } from '../lib/payments';
-
-type PayMethod = 'upi' | 'card';
 
 interface RazorpayOptions {
   key: string;
@@ -47,7 +43,6 @@ export function Pay() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [method, setMethod] = useState<PayMethod>('upi');
 
   async function openRealCheckout(order: OrderInfo) {
     const ready = await loadRazorpay();
@@ -70,7 +65,10 @@ export function Pay() {
     setBusy(false); // checkout modal is open; let it drive from here
   }
 
+  // The premium <PaymentStep/> CTA has no busy state, so guard against a double
+  // tap while an order is already in flight (a mock pay resolves near-instantly).
   async function pay() {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -105,85 +103,27 @@ export function Pay() {
 
   return (
     <AppShell>
-      <AppHeader title="One payment, all-in" onBack={() => navigate('/checklist')} />
-      <div className="flex flex-1 flex-col gap-5 p-6">
-        <div>
-          <p className="text-sm text-copy-muted">Everything included</p>
-          <p className="text-4xl font-bold">
-            ₹{TOTAL_FEE_RUPEES} <span className="text-lg font-medium text-copy-muted">all-in</span>
+      <PaymentStep
+        priceAllIn={TOTAL_FEE_RUPEES}
+        govtFee={GOV_FEE_RUPEES}
+        helpFee={SERVICE_FEE_RUPEES}
+        // Never demo-mode in a production build (spec). Payments are still mocked
+        // server-side regardless of this flag.
+        demo={import.meta.env.DEV}
+        onBack={() => navigate(-1)}
+        onPay={() => pay()}
+      />
+      {/* PaymentStep has no error slot; surface recoverable payment errors here. */}
+      {error && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <p
+            role="alert"
+            className="pointer-events-auto max-w-sm rounded-lg bg-red-500/95 px-4 py-2.5 text-center text-sm text-white shadow-lg"
+          >
+            {error}
           </p>
         </div>
-
-        <Surface>
-          <div className="space-y-2 text-sm text-copy-muted">
-            <div className="flex justify-between">
-              <span>Government fee</span>
-              <span className="text-copy">₹{GOV_FEE_RUPEES}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Our service (done-for-you)</span>
-              <span className="text-copy">₹{SERVICE_FEE_RUPEES}</span>
-            </div>
-            <div className="mt-2 flex justify-between border-t border-line pt-2 text-base font-semibold text-copy">
-              <span>You pay</span>
-              <span className="text-action">₹{TOTAL_FEE_RUPEES}</span>
-            </div>
-          </div>
-        </Surface>
-
-        <div className="rounded-xl bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
-          An agent charges ₹2,500–5,000 — and hides the government’s ₹100 fee. We don’t.
-        </div>
-
-        <div className="space-y-2 text-sm text-copy-muted">
-          <p className="font-semibold text-copy">What’s included</p>
-          <p>
-            We fill your form, decide your government category, file it — and if the government raises
-            a query, we fix it free.
-          </p>
-        </div>
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-semibold text-copy">Pay with</legend>
-          <div role="radiogroup" aria-label="Payment method" className="flex gap-2">
-            {(
-              [
-                { key: 'upi', label: 'UPI' },
-                { key: 'card', label: 'Card' },
-              ] as const
-            ).map((m) => (
-              <label
-                key={m.key}
-                className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium ring-1 transition ${
-                  method === m.key ? 'bg-action text-action-foreground ring-action' : 'bg-app-raised text-copy-muted ring-line'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="pay-method"
-                  value={m.key}
-                  checked={method === m.key}
-                  onChange={() => setMethod(m.key)}
-                  className="sr-only"
-                />
-                {m.label}
-              </label>
-            ))}
-          </div>
-          <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
-            Demo payment — no money will be charged.
-          </p>
-        </fieldset>
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <div className="mt-auto space-y-2">
-          <PrimaryAction type="button" disabled={busy} onClick={pay}>
-            {busy ? 'Starting…' : `Pay ₹${TOTAL_FEE_RUPEES}`}
-          </PrimaryAction>
-          <p className="text-center text-xs text-copy-muted">One payment. No surprises.</p>
-        </div>
-      </div>
+      )}
     </AppShell>
   );
 }

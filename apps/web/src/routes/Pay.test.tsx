@@ -11,6 +11,13 @@ vi.mock('../lib/payments', () => ({
   mockPay: (...a: unknown[]) => mockPay(...a),
 }));
 
+// PaymentStep uses motion; render reduced-motion so the count-up, assemble and
+// checklist draw-in are static and deterministic under jsdom.
+vi.mock('motion/react', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('motion/react')>();
+  return { ...mod, useReducedMotion: () => true };
+});
+
 const { Pay } = await import('./Pay');
 
 describe('Pay', () => {
@@ -21,10 +28,10 @@ describe('Pay', () => {
   });
   afterEach(() => cleanup());
 
-  it('shows the ₹599 split, the agent comparison and the pay button', () => {
+  it('shows the ₹599 split and pay button, and no longer shows the agent comparison', () => {
     render(<Pay />);
     expect(screen.getByText('₹499')).toBeInTheDocument();
-    expect(screen.getByText(/an agent charges ₹2,500–5,000/i)).toBeInTheDocument();
+    expect(screen.queryByText(/an agent charges/i)).not.toBeInTheDocument();
     expect(screen.getByText(/no surprises/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /pay ₹599/i })).toBeInTheDocument();
   });
@@ -48,8 +55,8 @@ describe('Pay', () => {
 
   it('offers accessible UPI and Card demo choices with the no-charge label', () => {
     render(<Pay />);
-    expect(screen.getByRole('radio', { name: /upi/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /card/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /upi/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /card/i })).toBeInTheDocument();
     expect(screen.getByText(/demo payment — no money will be charged/i)).toBeInTheDocument();
   });
 
@@ -57,7 +64,7 @@ describe('Pay', () => {
     createOrder.mockResolvedValue({ orderId: 'order_mock_2', amount: 59900, currency: 'INR', keyId: 'rzp_test_mock', mock: true });
     mockPay.mockResolvedValue(true);
     render(<Pay />);
-    fireEvent.click(screen.getByRole('radio', { name: /card/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /card/i }));
     fireEvent.click(screen.getByRole('button', { name: /pay ₹599/i }));
     await waitFor(() => expect(mockPay).toHaveBeenCalledWith('order_mock_2'));
     expect(navigate).toHaveBeenCalledWith('/upload');
