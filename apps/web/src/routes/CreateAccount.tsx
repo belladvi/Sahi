@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { AppShell } from '../components/AppShell';
 import { AppHeader } from '../components/AppHeader';
 import { PrimaryAction } from '../components/ui/PrimaryAction';
+import CreateAccountStep from '../features/auth/CreateAccountStep';
 import { authClient } from '../lib/auth-client';
 import { claimDraft } from '../lib/draft';
 import { normalizePhone } from '../lib/phone';
@@ -21,19 +22,22 @@ export function CreateAccount() {
   const [error, setError] = useState<string | null>(null);
   const [demoNote, setDemoNote] = useState<string | null>(null);
 
-  const contactValid =
-    method === 'phone'
-      ? contact.replace(/\D/g, '').length >= 10
-      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.trim());
-
-  async function sendCode() {
+  // Contact entry lives in the premium <CreateAccountStep/>, which hands us the
+  // chosen method + value via onSendCode (value is "+91XXXXXXXXXX" or an email).
+  // The OTP send, demo auto-fill, verify and draft-claim below are unchanged;
+  // `sendOtpFor` is also what the code phase's Resend calls. The `busy` guard
+  // drops repeat taps while a send is in flight (the step only fires onSendCode).
+  async function sendOtpFor(m: Method, rawContact: string) {
+    if (busy) return;
+    setMethod(m);
+    setContact(rawContact);
     setBusy(true);
     setError(null);
     try {
       const res =
-        method === 'phone'
-          ? await authClient.phoneNumber.sendOtp({ phoneNumber: normalizePhone(contact) })
-          : await authClient.emailOtp.sendVerificationOtp({ email: contact.trim(), type: 'sign-in' });
+        m === 'phone'
+          ? await authClient.phoneNumber.sendOtp({ phoneNumber: normalizePhone(rawContact) })
+          : await authClient.emailOtp.sendVerificationOtp({ email: rawContact.trim(), type: 'sign-in' });
       if (res.error) {
         setError(res.error.message ?? 'Could not send the code. Please try again.');
         return;
@@ -42,7 +46,7 @@ export function CreateAccount() {
       setPhase('code');
       // Demo mode: the case-study demo contacts have no real SMS/email delivery,
       // so the allowlisted code is auto-filled here. Nothing is actually sent.
-      const demo = await fetchDemoOtp(method === 'phone' ? normalizePhone(contact) : contact.trim());
+      const demo = await fetchDemoOtp(m === 'phone' ? normalizePhone(rawContact) : rawContact.trim());
       if (demo) {
         setCode(demo);
         setDemoNote('Demo code filled in — no SMS or email was sent.');
@@ -92,132 +96,74 @@ export function CreateAccount() {
     }
   }
 
+  if (phase === 'contact') {
+    return (
+      <AppShell>
+        <CreateAccountStep
+          initialMethod={method === 'phone' ? 'mobile' : 'email'}
+          pending={busy}
+          error={error}
+          onBack={() => navigate(-1)}
+          onSendCode={({ method: m, value }) => sendOtpFor(m === 'mobile' ? 'phone' : 'email', value)}
+          onSignIn={() => navigate('/sign-in')}
+          // No /terms or /privacy routes exist yet (spec: don't touch the router);
+          // no-op until real pages are built, rather than dead-ending on the 404.
+          onTerms={() => {}}
+          onPrivacy={() => {}}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
-      <AppHeader
-        title="Create your account"
-        onBack={() => (phase === 'code' ? setPhase('contact') : navigate('/checklist'))}
-      />
+      <AppHeader title="Create your account" onBack={() => setPhase('contact')} />
       <div className="flex flex-1 flex-col gap-5 p-6">
-        {phase === 'contact' ? (
-          <>
-            <p className="text-sm text-copy-muted">
-              Enter your mobile — we’ll send you a code. That’s your login, no password to remember.
-            </p>
-
-            <div className="flex rounded-xl bg-app-raised p-1 ring-1 ring-line">
-              {(['phone', 'email'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => {
-                    setMethod(m);
-                    setError(null);
-                  }}
-                  className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
-                    method === m ? 'bg-action text-action-foreground' : 'text-copy-muted'
-                  }`}
-                >
-                  {m === 'phone' ? 'Mobile' : 'Email'}
-                </button>
-              ))}
-            </div>
-
-            {method === 'phone' ? (
-              <label className="space-y-1.5">
-                <span className="text-sm text-copy-muted">Mobile number</span>
-                <div className="flex items-center gap-2 rounded-xl bg-app-raised px-3 py-2.5 ring-1 ring-line focus-within:ring-action">
-                  <span className="text-copy-muted">+91</span>
-                  <input
-                    value={contact}
-                    onChange={(e) => setContact(e.target.value)}
-                    inputMode="numeric"
-                    autoComplete="tel"
-                    placeholder="98765 43210"
-                    className="w-full bg-transparent text-copy outline-none placeholder:text-copy-muted"
-                  />
-                </div>
-              </label>
-            ) : (
-              <label className="space-y-1.5">
-                <span className="text-sm text-copy-muted">Email address</span>
-                <input
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                  inputMode="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  className="w-full rounded-xl bg-app-raised px-3 py-2.5 text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
-                />
-              </label>
-            )}
-
-            {error && <p className="text-sm text-red-400">{error}</p>}
-
-            <p className="text-xs text-copy-muted">You still haven’t paid anything.</p>
-
-            <div className="mt-auto space-y-3">
-              <PrimaryAction type="button" disabled={busy || !contactValid} onClick={sendCode}>
-                {busy ? 'Sending…' : `Send code by ${method === 'phone' ? 'SMS' : 'email'}`}
-              </PrimaryAction>
-              <button
-                type="button"
-                onClick={() => navigate('/sign-in')}
-                className="w-full text-center text-sm text-copy-muted hover:text-copy"
-              >
-                Already have an account? <span className="text-action">Sign in</span>
-              </button>
-            </div>
-          </>
+        {demoNote ? (
+          <p className="text-sm text-copy-muted">Enter the 6-digit code below.</p>
         ) : (
-          <>
-            {demoNote ? (
-              <p className="text-sm text-copy-muted">Enter the 6-digit code below.</p>
-            ) : (
-              <p className="text-sm text-copy-muted">
-                We sent a 6-digit code to{' '}
-                <span className="text-copy">
-                  {method === 'phone' ? normalizePhone(contact) : contact.trim()}
-                </span>
-                . Enter it below.
-              </p>
-            )}
-
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="••••••"
-              aria-label="6-digit code"
-              className="w-full rounded-xl bg-app-raised py-4 text-center text-2xl font-semibold tracking-[0.6em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
-            />
-
-            {demoNote && (
-              <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
-                {demoNote}
-              </p>
-            )}
-
-            {error && <p className="text-sm text-red-400">{error}</p>}
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={sendCode}
-              className="text-left text-sm text-copy-muted hover:text-copy disabled:opacity-50"
-            >
-              Didn’t get it? <span className="text-action">Resend code</span>
-            </button>
-
-            <div className="mt-auto">
-              <PrimaryAction type="button" disabled={busy || code.length !== 6} onClick={verify}>
-                {busy ? 'Verifying…' : 'Verify & continue to payment'}
-              </PrimaryAction>
-            </div>
-          </>
+          <p className="text-sm text-copy-muted">
+            We sent a 6-digit code to{' '}
+            <span className="text-copy">
+              {method === 'phone' ? normalizePhone(contact) : contact.trim()}
+            </span>
+            . Enter it below.
+          </p>
         )}
+
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="••••••"
+          aria-label="6-digit code"
+          className="w-full rounded-xl bg-app-raised py-4 text-center text-2xl font-semibold tracking-[0.6em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
+        />
+
+        {demoNote && (
+          <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
+            {demoNote}
+          </p>
+        )}
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => sendOtpFor(method, contact)}
+          className="text-left text-sm text-copy-muted hover:text-copy disabled:opacity-50"
+        >
+          Didn’t get it? <span className="text-action">Resend code</span>
+        </button>
+
+        <div className="mt-auto">
+          <PrimaryAction type="button" disabled={busy || code.length !== 6} onClick={verify}>
+            {busy ? 'Verifying…' : 'Verify & continue to payment'}
+          </PrimaryAction>
+        </div>
       </div>
     </AppShell>
   );

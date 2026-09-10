@@ -18,6 +18,13 @@ vi.mock('../lib/draft', () => ({ claimDraft: (...a: unknown[]) => claimDraft(...
 const fetchDemoOtp = vi.fn();
 vi.mock('../lib/demo-otp', () => ({ fetchDemoOtp: (...args: unknown[]) => fetchDemoOtp(...args) }));
 
+// The contact step (<CreateAccountStep/>) uses motion; render it reduced-motion
+// so entrance/cross-fade animations are static and deterministic under jsdom.
+vi.mock('motion/react', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('motion/react')>();
+  return { ...mod, useReducedMotion: () => true };
+});
+
 const { CreateAccount } = await import('./CreateAccount');
 
 function renderScreen() {
@@ -46,17 +53,29 @@ describe('CreateAccount', () => {
 
   it('shows Mobile/Email tabs and a disabled Send-code button, and the no-pay reassurance', () => {
     renderScreen();
-    expect(screen.getByRole('button', { name: 'Mobile' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Email' })).toBeInTheDocument();
-    expect(screen.getByText(/still haven’t paid anything/i)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Mobile' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Email' })).toBeInTheDocument();
+    expect(screen.getByText(/No payment yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send code by sms/i })).toBeDisabled();
   });
 
   it('switching to Email shows an email field', () => {
     renderScreen();
-    fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Email' }));
     expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send code by email/i })).toBeInTheDocument();
+  });
+
+  it('a failed send surfaces the error on the contact step (no silent dead-tap)', async () => {
+    sendOtp.mockResolvedValue({ error: { message: 'Could not send the code. Please try again.' } });
+    renderScreen();
+    fireEvent.change(screen.getByPlaceholderText('98765 43210'), { target: { value: '9876543210' } });
+    fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/could not send the code/i),
+    );
+    // stayed on the contact step — never advanced to the OTP/verify phase
+    expect(screen.queryByRole('button', { name: /verify & continue to payment/i })).not.toBeInTheDocument();
   });
 
   it('sending a phone code advances to the OTP step', async () => {
