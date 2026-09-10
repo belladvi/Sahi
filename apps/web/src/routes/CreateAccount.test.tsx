@@ -31,6 +31,11 @@ function renderScreen() {
   return render(<CreateAccount />);
 }
 
+const cellValue = () =>
+  Array.from({ length: 6 }, (_, i) => (screen.getByLabelText(`Digit ${i + 1} of 6`) as HTMLInputElement).value).join(
+    '',
+  );
+
 // Get from the contact step to a verifiable OTP step with the code pre-filled.
 async function reachVerify() {
   sendOtp.mockResolvedValue({ error: null });
@@ -38,7 +43,7 @@ async function reachVerify() {
   verify.mockResolvedValue({ error: null });
   fireEvent.change(screen.getByPlaceholderText('98765 43210'), { target: { value: '9876543210' } });
   fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
-  await waitFor(() => expect(screen.getByLabelText('6-digit code')).toHaveValue('135790'));
+  await waitFor(() => expect(cellValue()).toBe('135790'));
 }
 
 describe('CreateAccount', () => {
@@ -89,17 +94,16 @@ describe('CreateAccount', () => {
     expect(sendOtp).toHaveBeenCalledWith({ phoneNumber: '+919876543210' });
   });
 
-  it('demo mode: auto-fills the code and states nothing was sent (no false delivery claim)', async () => {
+  it('demo mode: pre-fills the code and states nothing was sent (no false delivery claim)', async () => {
     sendOtp.mockResolvedValue({ error: null });
     fetchDemoOtp.mockResolvedValue('135790');
     renderScreen();
     fireEvent.change(screen.getByPlaceholderText('98765 43210'), { target: { value: '9898989898' } });
     fireEvent.click(screen.getByRole('button', { name: /send code by sms/i }));
-    await waitFor(() =>
-      expect(screen.getByText('Demo code filled in — no SMS or email was sent.')).toBeInTheDocument(),
-    );
-    expect(screen.getByLabelText('6-digit code')).toHaveValue('135790');
-    expect(screen.queryByText(/we sent a 6-digit code/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(cellValue()).toBe('135790'));
+    // The "code pre-filled, nothing sent" banner is the honesty guard against a
+    // false delivery claim.
+    expect(screen.getByText(/code pre-filled, no SMS or email sent/i)).toBeInTheDocument();
   });
 
   it('after verify, routes to the server-derived next route from the claim (a fresh draft → Payment)', async () => {
@@ -117,6 +121,16 @@ describe('CreateAccount', () => {
     fireEvent.click(screen.getByRole('button', { name: /verify & continue to payment/i }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/upload'));
     expect(navigate).not.toHaveBeenCalledWith('/pay');
+  });
+
+  it('a wrong code surfaces the error (shake) and never navigates', async () => {
+    renderScreen();
+    await reachVerify();
+    verify.mockResolvedValue({ error: { message: 'Invalid OTP' } });
+    fireEvent.click(screen.getByRole('button', { name: /verify & continue to payment/i }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/invalid otp|wrong or expired/i));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(claimDraft).not.toHaveBeenCalled();
   });
 
   it('a claim conflict never opens Payment — it shows recoverable copy instead', async () => {

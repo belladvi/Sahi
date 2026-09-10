@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AppShell } from '../components/AppShell';
-import { AppHeader } from '../components/AppHeader';
-import { PrimaryAction } from '../components/ui/PrimaryAction';
 import CreateAccountStep from '../features/auth/CreateAccountStep';
+import VerifyCodeStep from '../features/auth/VerifyCodeStep';
 import { authClient } from '../lib/auth-client';
 import { claimDraft } from '../lib/draft';
 import { normalizePhone } from '../lib/phone';
@@ -11,6 +10,15 @@ import { fetchDemoOtp } from '../lib/demo-otp';
 
 type Method = 'phone' | 'email';
 type Phase = 'contact' | 'code';
+
+/** Human-readable destination for the verify screen — e.g. "+91 98765 43210". */
+function formatDestination(method: Method, contact: string): string {
+  if (method !== 'phone') return contact.trim();
+  const digits = contact.replace(/\D/g, '');
+  const local = digits.startsWith('91') ? digits.slice(2) : digits;
+  const grouped = local.length === 10 ? `${local.slice(0, 5)} ${local.slice(5)}` : local;
+  return `+91 ${grouped}`.trim();
+}
 
 export function CreateAccount() {
   const navigate = useNavigate();
@@ -20,12 +28,11 @@ export function CreateAccount() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [demoNote, setDemoNote] = useState<string | null>(null);
+  const [otpFailed, setOtpFailed] = useState(false);
 
   // Contact entry lives in the premium <CreateAccountStep/>, which hands us the
   // chosen method + value via onSendCode (value is "+91XXXXXXXXXX" or an email).
-  // The OTP send, demo auto-fill, verify and draft-claim below are unchanged;
-  // `sendOtpFor` is also what the code phase's Resend calls. The `busy` guard
+  // `sendOtpFor` is also what the verify screen's Resend calls. The `busy` guard
   // drops repeat taps while a send is in flight (the step only fires onSendCode).
   async function sendOtpFor(m: Method, rawContact: string) {
     if (busy) return;
@@ -33,6 +40,7 @@ export function CreateAccount() {
     setContact(rawContact);
     setBusy(true);
     setError(null);
+    setOtpFailed(false);
     try {
       const res =
         m === 'phone'
@@ -45,12 +53,10 @@ export function CreateAccount() {
       setCode('');
       setPhase('code');
       // Demo mode: the case-study demo contacts have no real SMS/email delivery,
-      // so the allowlisted code is auto-filled here. Nothing is actually sent.
+      // so the allowlisted code is fetched here and pre-filled on the verify
+      // screen (VerifyCodeStep shows a "code pre-filled, nothing sent" banner).
       const demo = await fetchDemoOtp(m === 'phone' ? normalizePhone(rawContact) : rawContact.trim());
-      if (demo) {
-        setCode(demo);
-        setDemoNote('Demo code filled in — no SMS or email was sent.');
-      }
+      if (demo) setCode(demo);
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -58,21 +64,24 @@ export function CreateAccount() {
     }
   }
 
-  async function verify() {
-    setBusy(true);
+  // Verify runs two required round-trips: Better Auth verify (mints the session)
+  // then claimDraft (attaches the anonymous draft and returns the ACTUAL next
+  // route — never open Payment blindly). VerifyCodeStep shows an instant
+  // "Verifying…" state while this promise is in flight, so the tap never feels
+  // dead; navigation on success unmounts this screen.
+  async function verify(otp: string) {
     setError(null);
+    setOtpFailed(false);
     try {
       const res =
         method === 'phone'
-          ? await authClient.phoneNumber.verify({ phoneNumber: normalizePhone(contact), code })
-          : await authClient.signIn.emailOtp({ email: contact.trim(), otp: code });
+          ? await authClient.phoneNumber.verify({ phoneNumber: normalizePhone(contact), code: otp })
+          : await authClient.signIn.emailOtp({ email: contact.trim(), otp });
       if (res.error) {
+        setOtpFailed(true);
         setError(res.error.message ?? 'That code was wrong or expired. Send a new one.');
         return;
       }
-      // Session established — carry the anonymous draft over and route by its
-      // ACTUAL state. Never open Payment blindly: a fresh draft goes to /pay, a
-      // paid/later application resumes at its own route, a conflict stays put.
       const claim = await claimDraft();
       if (claim.ok) {
         navigate(claim.nextRoute);
@@ -91,8 +100,6 @@ export function CreateAccount() {
       setError('Network error. Please try again.');
     } catch {
       setError('Network error. Please try again.');
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -117,54 +124,19 @@ export function CreateAccount() {
 
   return (
     <AppShell>
-      <AppHeader title="Create your account" onBack={() => setPhase('contact')} />
-      <div className="flex flex-1 flex-col gap-5 p-6">
-        {demoNote ? (
-          <p className="text-sm text-copy-muted">Enter the 6-digit code below.</p>
-        ) : (
-          <p className="text-sm text-copy-muted">
-            We sent a 6-digit code to{' '}
-            <span className="text-copy">
-              {method === 'phone' ? normalizePhone(contact) : contact.trim()}
-            </span>
-            . Enter it below.
-          </p>
-        )}
-
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={6}
-          placeholder="••••••"
-          aria-label="6-digit code"
-          className="w-full rounded-xl bg-app-raised py-4 text-center text-2xl font-semibold tracking-[0.6em] text-copy ring-1 ring-line outline-none placeholder:text-copy-muted focus:ring-action"
-        />
-
-        {demoNote && (
-          <p className="rounded-lg bg-app-raised px-3 py-2 text-xs text-copy-muted ring-1 ring-line">
-            {demoNote}
-          </p>
-        )}
-
-        {error && <p className="text-sm text-red-400">{error}</p>}
-
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => sendOtpFor(method, contact)}
-          className="text-left text-sm text-copy-muted hover:text-copy disabled:opacity-50"
-        >
-          Didn’t get it? <span className="text-action">Resend code</span>
-        </button>
-
-        <div className="mt-auto">
-          <PrimaryAction type="button" disabled={busy || code.length !== 6} onClick={verify}>
-            {busy ? 'Verifying…' : 'Verify & continue to payment'}
-          </PrimaryAction>
-        </div>
-      </div>
+      <VerifyCodeStep
+        destination={formatDestination(method, contact)}
+        error={otpFailed}
+        errorMessage={error}
+        // Never demo-mode in a production build; the real server demo code (when
+        // present) is passed via prefillCode and still shows the banner.
+        demo={import.meta.env.DEV}
+        prefillCode={code}
+        onChangeContact={() => setPhase('contact')}
+        onResend={() => sendOtpFor(method, contact)}
+        onVerify={(c) => verify(c)}
+        onBack={() => setPhase('contact')}
+      />
     </AppShell>
   );
 }
