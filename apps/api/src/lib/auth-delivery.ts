@@ -54,6 +54,11 @@ export function allowedDemoContacts(): Set<string> {
 
 export function isDemoContactAllowed(contact: string): boolean {
   const allow = allowedDemoContacts();
+  // Demo wildcard: `DEMO_OTP_CONTACTS=*` lets ANY contact retrieve its code, so a
+  // demo/case-study visitor can use their own real number/email and still be shown
+  // the synthetic OTP. This only matters in demo mode — recordDemoOtp/peekDemoOtp
+  // both fail closed in provider mode regardless — so production reveals nothing.
+  if (allow.has('*')) return true;
   return contactForms(contact).some((f) => allow.has(f));
 }
 

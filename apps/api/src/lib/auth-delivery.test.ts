@@ -87,6 +87,27 @@ describe('demo mode reveal is allowlist-gated', () => {
   });
 });
 
+describe('demo wildcard allowlist (DEMO_OTP_CONTACTS="*")', () => {
+  beforeEach(() => {
+    process.env.DEMO_OTP_CONTACTS = '*';
+  });
+
+  it('reveals a code for ANY contact in demo mode', () => {
+    expect(isDemoContactAllowed(OTHER_EMAIL)).toBe(true);
+    expect(isDemoContactAllowed(OTHER_PHONE)).toBe(true);
+    deliverOtp('email', OTHER_EMAIL, '444444');
+    deliverOtp('phone', OTHER_PHONE, '555555');
+    expect(peekDemoOtp(OTHER_EMAIL)).toBe('444444');
+    expect(peekDemoOtp(OTHER_PHONE)).toBe('555555');
+  });
+
+  it('still reveals nothing in provider mode even with the wildcard set', () => {
+    process.env.AUTH_DELIVERY_MODE = 'provider';
+    expect(() => deliverOtp('phone', OTHER_PHONE, '555555')).toThrow(/not configured/i);
+    expect(peekDemoOtp(OTHER_PHONE)).toBeNull();
+  });
+});
+
 describe('expiry and restart', () => {
   it('a demo code expires after its TTL', () => {
     vi.useFakeTimers();
